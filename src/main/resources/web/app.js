@@ -7,6 +7,21 @@ const canModerate = () => ['admin','moderator'].includes(state.session?.role);
 const isAdmin = () => state.session?.role === 'admin';
 const displayStaffName = name => String(name || '').replace(/ \[\d{17,20}\]$/, '');
 const initial = name => esc((name || '?').slice(0,2).toUpperCase());
+const skinId = uuid => /^[0-9a-fA-F-]{32,36}$/.test(String(uuid||'')) ? String(uuid).replaceAll('-','') : '';
+const avatar = (name, uuid) => {
+  const id=skinId(uuid);
+  return `<span class="avatar player-head">${id ? `<img src="https://mc-heads.net/avatar/${id}/64" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.hidden=true">` : ''}<span class="head-fallback">${initial(name)}</span></span>`;
+};
+const fullSkin = uuid => {
+  const id=skinId(uuid);
+  return id ? `<img class="full-skin" src="https://mc-heads.net/body/${id}/160" alt="Full Minecraft skin" loading="lazy" referrerpolicy="no-referrer" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><p class="muted" hidden>Skin unavailable</p>` : unavailable('Skin unavailable');
+};
+const playerLocation = p => {
+  const l=p.location;
+  if(!l?.available)return unavailable('No saved location available');
+  const coord=n=>Number(n).toFixed(1);
+  return pairs([['Status',l.source==='live'?'Current location':'Last saved location'],['Dimension',l.dimension],['X',coord(l.x)],['Y',coord(l.y)],['Z',coord(l.z)],...(l.source==='saved'?[['Saved',date(l.savedAt)]]:[])]);
+};
 async function api(path, body, requestId) {
   const headers = {};
   if (body !== undefined) {
@@ -76,7 +91,7 @@ function renderPlayers() {
   const query=$('#search').value.trim().toLowerCase();
   const rows=state.players.filter(p=>(!query || p.name.toLowerCase().includes(query) || p.uuid.includes(query)) && (state.filter==='all' || p.online === (state.filter==='online')));
   $('#filtered-count').textContent=rows.length;
-  $('#player-rows').innerHTML=rows.length?rows.map(p=>`<button class="player-row ${p.uuid===state.selected?'selected':''}" data-player="${esc(p.uuid)}" aria-pressed="${p.uuid===state.selected}"><span class="avatar">${initial(p.name)}</span><span><strong>${esc(p.name)}</strong><small class="${p.online?'online':''}">${p.online?'● Online':'Offline'}</small></span><span class="arrow">›</span></button>`).join(''):'<div class="empty"><h2>No players found</h2><p>Try another name or status filter.</p></div>';
+  $('#player-rows').innerHTML=rows.length?rows.map(p=>`<button class="player-row ${p.uuid===state.selected?'selected':''}" data-player="${esc(p.uuid)}" aria-pressed="${p.uuid===state.selected}">${avatar(p.name,p.uuid)}<span><strong>${esc(p.name)}</strong><small class="${p.online?'online':''}">${p.online?'● Online':'Offline'}</small></span><span class="arrow">›</span></button>`).join(''):'<div class="empty"><h2>No players found</h2><p>Try another name or status filter.</p></div>';
 }
 $('#search').addEventListener('input',renderPlayers);
 $('.filter-tabs').addEventListener('click',e=>{const button=e.target.closest('[data-filter]'); if(!button)return; state.filter=button.dataset.filter; document.querySelectorAll('[data-filter]').forEach(b=>b.classList.toggle('selected',b===button));renderPlayers();});
@@ -90,7 +105,7 @@ async function loadPlayer(id, reset) {
 }
 function renderDetail() {
   const p=state.detail;if(!p)return;
-  $('#detail').innerHTML=`<div class="profile-head"><span class="avatar">${initial(p.name)}</span><div><h2>${esc(p.name)} <span class="pill ${p.online?'online':''}">${p.online?'● Online':'Offline'}</span></h2><div class="uuid">${esc(p.uuid)}</div></div><div class="profile-actions">${canModerate()?`<button class="primary" data-action="punish" ${!p.punish?.available?'disabled':''}>＋ Issue punishment</button>`:''}</div></div><div class="detail-tabs">${[['overview','Overview'],['cases','Punishments',p.cases?.length],['notes','Staff notes',p.notes?.length],['security','Security'],['inventory','Inventory'],['enderChest','Ender Chest'],['curios','Curios']].map(([key,label,count])=>`<button data-tab="${key}" class="${state.tab===key?'active':''}">${label}${count!==undefined?' · '+count:''}</button>`).join('')}</div><div class="detail-body">${({overview:overview,cases:cases,notes:notes,security:security,inventory:p=>storage(p,'inventory'),enderChest:p=>storage(p,'enderChest'),curios:p=>storage(p,'curios')})[state.tab](p)}</div>`;
+  $('#detail').innerHTML=`<div class="profile-head">${avatar(p.name,p.uuid)}<div><h2>${esc(p.name)} <span class="pill ${p.online?'online':''}">${p.online?'● Online':'Offline'}</span></h2><div class="uuid">${esc(p.uuid)}</div></div><div class="profile-actions">${canModerate()?`<button class="primary" data-action="punish" ${!p.punish?.available?'disabled':''}>＋ Issue punishment</button>`:''}</div></div><div class="detail-tabs">${[['overview','Overview'],['cases','Punishments',p.cases?.length],['notes','Staff notes',p.notes?.length],['security','Security'],['inventory','Inventory'],['enderChest','Ender Chest'],['curios','Curios']].map(([key,label,count])=>`<button data-tab="${key}" class="${state.tab===key?'active':''}">${label}${count!==undefined?' · '+count:''}</button>`).join('')}</div><div class="detail-body">${({overview:overview,cases:cases,notes:notes,security:security,inventory:p=>storage(p,'inventory'),enderChest:p=>storage(p,'enderChest'),curios:p=>storage(p,'curios')})[state.tab](p)}</div>`;
   loadItemIcons();
 }
 function unavailable(text='No record available') {return `<p>${esc(text)}</p>`;}
@@ -98,7 +113,7 @@ function info(title,html,wide=false){return `<article class="info-card ${wide?'w
 function pairs(data){return `<dl>${data.map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(v ?? '—')}</dd>`).join('')}</dl>`;}
 function overview(p){
   const current=(p.cases||[]).filter(c=>c.active&&(!c.until||c.until>Date.now())&&['ban','mute'].includes(c.type));
-  return `<div class="info-grid">${info('Moderation summary',pairs([['Current bans / mutes',current.length],['Recorded punishments',p.cases?.length||0],['Staff notes',p.notes?.length||0],['Punish integration',p.punish?.available?'Available':'Unavailable']]))}${info('Discord identity',p.discord?.available?pairs([['Display name',p.discord.displayName],['Account',p.discord.discordTag],['Discord ID',p.discord.discordId],['Linked',date(p.discord.linkedAt)]]):unavailable('No linked Discord account'))}${info('FTB Team',p.teams?.available?`<p><strong>${esc(p.teams.name)}</strong></p>${(p.teams.members||[]).map(m=>`<p>${esc(m.name)} <span class="pill">${esc(m.rankDisplay||m.rank)}</span></p>`).join('')}`:unavailable('No team record available'))}${info('ClockIn',p.clockin?.available?pairs([['Status',p.clockin.clockedIn?'Clocked in':'Clocked out'],['Total time',Math.floor(p.clockin.totalSeconds/3600)+'h '+Math.floor(p.clockin.totalSeconds%3600/60)+'m']]):unavailable())}${info('Review before acting',`<p>Check security evidence, previous punishments, and staff notes before issuing an action. Configured offenses use the Punish mod’s escalation rules.</p>`,true)}</div>`;
+  return `<div class="info-grid">${info('Location',playerLocation(p))}${info('Player skin',fullSkin(p.uuid))}${info('Moderation summary',pairs([['Current bans / mutes',current.length],['Recorded punishments',p.cases?.length||0],['Staff notes',p.notes?.length||0],['Punish integration',p.punish?.available?'Available':'Unavailable']]))}${info('Discord identity',p.discord?.available?pairs([['Display name',p.discord.displayName],['Account',p.discord.discordTag],['Discord ID',p.discord.discordId],['Linked',date(p.discord.linkedAt)]]):unavailable('No linked Discord account'))}${info('FTB Team',p.teams?.available?`<p><strong>${esc(p.teams.name)}</strong></p>${(p.teams.members||[]).map(m=>`<p>${esc(m.name)} <span class="pill">${esc(m.rankDisplay||m.rank)}</span></p>`).join('')}`:unavailable('No team record available'))}${info('ClockIn',p.clockin?.available?pairs([['Status',p.clockin.clockedIn?'Clocked in':'Clocked out'],['Total time',Math.floor(p.clockin.totalSeconds/3600)+'h '+Math.floor(p.clockin.totalSeconds%3600/60)+'m']]):unavailable())}${info('Review before acting',`<p>Check security evidence, previous punishments, and staff notes before issuing an action. Configured offenses use the Punish mod’s escalation rules.</p>`,true)}</div>`;
 }
 function caseStatus(c){if(c.removedBy)return 'removed';if(c.until&&c.until<=Date.now())return 'expired';if(!c.active)return c.replaced?'replaced':'inactive';if(['warn','kick'].includes(c.type))return 'recorded';return 'current';}
 function cases(p){

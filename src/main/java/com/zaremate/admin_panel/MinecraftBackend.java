@@ -3,6 +3,9 @@ package com.zaremate.admin_panel;
 import com.google.gson.*;
 import com.zaremate.admin_gui.AdminGuiData;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.nbt.*;
+import net.minecraft.world.level.storage.LevelResource;
+import java.nio.file.*;
 import net.neoforged.fml.ModList;
 import java.util.*;
 import java.util.concurrent.*;
@@ -30,8 +33,43 @@ final class MinecraftBackend implements Backend {
         });
     }
     public JsonObject player(UUID id, Auth.User viewer) throws Exception { return onServer(() -> {
-        JsonObject result = detail(id, viewer); result.add("storage", InventoryData.read(server, id)); return result;
+        JsonObject result = detail(id, viewer); result.add("storage", InventoryData.read(server, id)); result.add("location", location(id)); return result;
     }); }
+    private JsonObject location(UUID id) {
+        JsonObject out = new JsonObject();
+        var online = server.getPlayerList().getPlayer(id);
+        if (online != null) {
+            out.addProperty("available", true);
+            out.addProperty("source", "live");
+            out.addProperty("dimension", online.level().dimension().location().toString());
+            out.addProperty("x", online.getX());
+            out.addProperty("y", online.getY());
+            out.addProperty("z", online.getZ());
+            out.addProperty("yaw", online.getYRot());
+            return out;
+        }
+        Path file = server.getWorldPath(LevelResource.PLAYER_DATA_DIR).resolve(id + ".dat");
+        if (Files.isRegularFile(file)) {
+            try {
+                CompoundTag tag = NbtIo.readCompressed(file, NbtAccounter.create(16 * 1024 * 1024));
+                ListTag pos = tag.getList("Pos", Tag.TAG_DOUBLE);
+                if (pos.size() == 3) {
+                    out.addProperty("available", true);
+                    out.addProperty("source", "saved");
+                    out.addProperty("savedAt", Files.getLastModifiedTime(file).toMillis());
+                    out.addProperty("dimension", tag.contains("Dimension", Tag.TAG_STRING) ? tag.getString("Dimension") : "Unknown");
+                    out.addProperty("x", pos.getDouble(0));
+                    out.addProperty("y", pos.getDouble(1));
+                    out.addProperty("z", pos.getDouble(2));
+                    return out;
+                }
+            } catch (Exception ignored) {
+                // Saved position is optional; never fail the entire player profile.
+            }
+        }
+        out.addProperty("available", false);
+        return out;
+    }
     private JsonObject detail(UUID id, Auth.User viewer) {
         JsonObject r = JsonParser.parseString(AdminGuiData.buildPlayerDetail(server, id, viewer.uuid())).getAsJsonObject();
         if (ModList.get().isLoaded("punish")) r.add("cases", PunishBridge.history(server, id));
