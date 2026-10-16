@@ -21,3 +21,10 @@
 
 /* Players with stored TSA or Airport Security detections. */
 .player-row .detected-name,.profile-head .detected-name{color:var(--red)}
+
+/* Compact operational layout: prioritize data, not decorative content. */
+.sidebar{padding-top:22px}.sidebar nav{margin-top:28px}
+.page{padding-top:24px}.page-heading{margin-bottom:16px}.page-heading h1{font-size:26px;letter-spacing:-.6px}
+.stats{gap:12px;margin-bottom:16px}.stats article{padding:13px 18px}.stats strong{font-size:25px;margin-top:2px}
+.section-header{padding:14px 16px}.detail-body{padding:18px}.info-card{padding:13px}
+.empty{padding:46px 16px}.player-row{padding:9px 10px}
