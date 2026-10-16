@@ -7,13 +7,7 @@ import java.util.*;
 record Config(String bind, int port, String origin, Map<String, Auth.User> users, DiscordSettings discord) {
     Config(String bind, int port, String origin, Map<String, Auth.User> users) { this(bind, port, origin, users, null); }
     static Config load(Path file) throws Exception {
-        if (!Files.exists(file)) {
-            Files.createDirectories(file.getParent());
-            try (var defaults = Config.class.getResourceAsStream("/admin-panel-default.properties")) {
-                if (defaults == null) throw new IllegalStateException("Missing bundled default configuration");
-                Files.copy(defaults, file);
-            }
-        }
+        if (!Files.exists(file)) throw new IllegalStateException("Missing panel configuration; use first-run setup");
         Properties p = new Properties();
         try (var in = Files.newInputStream(file)) { p.load(in); }
         if (!Boolean.parseBoolean(p.getProperty("enabled", "false"))) return null;
