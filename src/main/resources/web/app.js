@@ -33,11 +33,16 @@ const hasDetections = p => Boolean(p.hasDetections ||
   (p.tsa?.available && ((p.tsa.detections?.length || 0) > 0 || Number(p.tsa.packetModified || 0) > 0)) ||
   (p.ass?.available && Number(p.ass.detectedChecks || 0) > 0));
 const detectionClass = p => hasDetections(p) ? 'detected-name' : '';
+const formatPlaytime = seconds => {
+  const minutes=Math.floor(Math.max(0,Number(seconds)||0)/60);
+  const days=Math.floor(minutes/1440), hours=Math.floor(minutes%1440/60), mins=minutes%60;
+  return [days && days+'d', (days||hours) && hours+'h', mins+'m'].filter(Boolean).join(' ');
+};
 const playerLocation = p => {
   const l=p.location;
-  if(!l?.available)return unavailable('No saved location available');
+  if(!l?.available)return pairs([['Time played',p.playtime?.available?formatPlaytime(p.playtime.seconds):'—'],['Location','Unavailable']]);
   const coord=n=>Number(n).toFixed(1);
-  return pairs([['Status',l.source==='live'?'Current location':'Last saved location'],['Dimension',l.dimension],['X',coord(l.x)],['Y',coord(l.y)],['Z',coord(l.z)],...(l.source==='saved'?[['Saved',date(l.savedAt)]]:[])]);
+  return pairs([['Time played',p.playtime?.available?formatPlaytime(p.playtime.seconds):'—'],['Status',l.source==='live'?'Current location':'Last saved location'],['Dimension',l.dimension],['X',coord(l.x)],['Y',coord(l.y)],['Z',coord(l.z)],...(l.source==='saved'?[['Saved',date(l.savedAt)]]:[])]);
 };
 async function api(path, body, requestId) {
   const headers = {};
