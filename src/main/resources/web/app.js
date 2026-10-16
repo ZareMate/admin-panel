@@ -205,7 +205,7 @@ $('#action-dialog').addEventListener('cancel',e=>{if(state.busy)e.preventDefault
 function parsePunishDuration(input) {
   const value=String(input||'').trim().toLowerCase();
   if(['perm','permanent','forever'].includes(value))return 0;
-  const match=/^(\\d+)\\s*(m|min|h|d|w)$/.exec(value);
+  const match=/^(\d+)\s*(m|min|h|d|w)$/.exec(value);
   if(!match)throw new Error('Invalid duration. Use 30m, 1h, 3d, 1w or perm.');
   const factor={m:1,min:1,h:60,d:1440,w:10080}[match[2]];
   const minutes=Number(match[1])*factor;
