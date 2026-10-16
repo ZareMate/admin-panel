@@ -3,6 +3,7 @@ package com.zaremate.admin_panel;
 import com.google.gson.*;
 import com.sun.net.httpserver.*;
 import java.net.*;
+import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.*;
@@ -11,6 +12,7 @@ import java.util.logging.Logger;
 final class PanelServer implements AutoCloseable {
     private static final Logger LOG = Logger.getLogger("admin_panel");
     private final Config config;
+    private final Path configPath;
     private final Auth auth;
     private final DiscordAuth discord;
     private final Backend backend;
@@ -25,11 +27,14 @@ final class PanelServer implements AutoCloseable {
     // Session-scoped request IDs are retained for the session lifetime. Never silently replay a mutation.
     private final Map<String, Long> requests = new HashMap<>();
     PanelServer(Config config, Backend backend, Audit audit) throws Exception {
-        this(config, backend, audit, config.discord() == null ? null : new HttpDiscordApi(config.discord()));
+        this(config, backend, audit, config.discord() == null ? null : new HttpDiscordApi(config.discord()), null);
     }
     PanelServer(Config config, Backend backend, Audit audit, DiscordApi discordApi) throws Exception {
+        this(config, backend, audit, discordApi, null);
+    }
+    PanelServer(Config config, Backend backend, Audit audit, DiscordApi discordApi, Path configPath) throws Exception {
         this.discord = config.discord() == null ? null : new DiscordAuth(config.discord(), discordApi, config.origin());
-        this.config = config; this.auth = new Auth(config.users()); this.backend = backend; this.audit = audit;
+        this.config = config; this.configPath = configPath; this.auth = new Auth(config.users()); this.backend = backend; this.audit = audit;
         server = HttpServer.create(new InetSocketAddress(config.bind(), config.port()), 32);
         workers = new ThreadPoolExecutor(4, 4, 0, TimeUnit.SECONDS, new ArrayBlockingQueue<>(64), new ThreadPoolExecutor.AbortPolicy());
         server.setExecutor(workers);
@@ -157,9 +162,20 @@ final class PanelServer implements AutoCloseable {
             bytes(x, 200, "image/png", png);
             return;
         }
-        if (path.equals("/api/access/ranks") && !post) {
+        if (path.equals("/api/access/ranks")) {
             if (config.discord() == null || !user.isAdmin() || !Set.of("owner", "dev").contains(user.rank()))
                 throw new Failure(403, "Owner or developer rank required");
+            if (post) {
+                if (configPath == null) throw new Failure(503, "Configuration file unavailable");
+                JsonObject input = body(x);
+                if (!input.has("ranks") || !input.get("ranks").isJsonArray()) throw new Failure(400, "Rank array required");
+                RankConfigEditor.save(configPath, input.getAsJsonArray("ranks"));
+                audit.write(user.name(), "access-ranks-update", "", "success", new JsonObject());
+                JsonObject saved = new JsonObject();
+                saved.addProperty("restartRequired", true);
+                json(x, 200, saved);
+                return;
+            }
             JsonObject result = new JsonObject();
             result.add("ranks", config.discord() == null ? new JsonArray() : config.discord().accessRanks());
             json(x, 200, result); return;
