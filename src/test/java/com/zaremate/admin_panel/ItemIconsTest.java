@@ -34,7 +34,7 @@ public final class ItemIconsTest {
         String casingSvg=new String(Base64.getDecoder().decode(resolver.icon("test:casing").split(",",2)[1]),StandardCharsets.UTF_8);
         check(casingSvg.contains("<svg"),"block preview is SVG");
         check(casingSvg.split("<clipPath ",-1).length-1==3,"cube displays three camera-facing sides");
-        model(assets,"test:tool","{\"textures\":{\"0\":\"test:item/gem\"},\"elements\":[{\"from\":[0,0,0],\"to\":[16,16,16],\"faces\":{\"south\":{\"texture\":\"#0\"}}}]}");
+        model(assets,"test:tool","{\"textures\":{\"0\":\"test:item/gem\"},\"elements\":[{\"from\":[0,0,0],\"to\":[16,16,16],\"faces\":{\"north\":{\"texture\":\"#0\"}}}]}");
         check(!resolver.icon("test:tool").isEmpty(),"static model face texture preview");
         check(!ItemIcons.png(new byte[24]),"invalid PNG rejected");
         check(resolver.icon("test:missing").isEmpty(),"missing asset fallback");
