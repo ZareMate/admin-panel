@@ -58,5 +58,9 @@ final class Auth {
         if (session != null && session.expires() <= System.currentTimeMillis()) { sessions.remove(token); return null; }
         return session;
     }
+    void refresh(String token, User user) {
+        sessions.computeIfPresent(token, (key, old) ->
+            new Session(user, old.csrf(), old.expires(), old.discord()));
+    }
     void logout(String token) { sessions.remove(token); }
 }
