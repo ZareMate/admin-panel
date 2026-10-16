@@ -14,7 +14,7 @@ const avatar = (name, uuid) => {
 };
 const fullSkin = name => {
   const player=skinName(name);
-  return player ? `<img class="full-skin" src="/api/skin/body/${encodeURIComponent(player)}" alt="Full Minecraft skin" loading="lazy" referrerpolicy="no-referrer"><p class="muted" hidden>Skin unavailable</p>` : unavailable('Skin unavailable');
+  return player ? `<img class="full-skin" src="/api/skin/body/${encodeURIComponent(player)}?render=2" alt="Full Minecraft skin" loading="lazy" referrerpolicy="no-referrer"><p class="muted" hidden>Skin unavailable</p>` : unavailable('Skin unavailable');
 };
 // CSP disallows inline handlers; image state is managed by safe delegated listeners.
 document.addEventListener('load', e => {
