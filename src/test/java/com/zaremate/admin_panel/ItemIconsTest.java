@@ -20,6 +20,16 @@ public final class ItemIconsTest {
     static void model(Map<String,byte[]> a,String id,String json){String[] parts=id.split(":");a.put("assets/"+parts[0]+"/models/item/"+parts[1]+".json",json.getBytes(StandardCharsets.UTF_8));}
     public static void main(String[] args)throws Exception {
         var assets=assets();var resolver=new ItemIcons(assets::get);
+        check(ItemIcons.exportedPath("vista:wave_gate").equals("icons/vista__wave_gate.png"),"export filename mapping");
+        byte[] exported=assets.get("assets/test/textures/item/gem.png");
+        assets.put("icons/test__exported.png",exported);
+        check(resolver.icon("test:exported").equals("data:image/png;base64,"+Base64.getEncoder().encodeToString(exported)),"exported PNG preferred without a model");
+        assets.put("icons/test__gem.png",exported);
+        check(resolver.icon("test:gem").equals("data:image/png;base64,"+Base64.getEncoder().encodeToString(exported)),"exported PNG takes priority");
+        assets.put("icons/test__invalid.png",new byte[]{1,2,3});
+        check(resolver.icon("test:invalid").isEmpty(),"invalid exported PNG fallback");
+        assets.remove("icons/test__gem.png");
+        resolver=new ItemIcons(assets::get);
         String icon=resolver.icon("test:gem");check(icon.startsWith("data:image/png;base64,"),"PNG data URI");
         var decoded=ImageIO.read(new ByteArrayInputStream(Base64.getDecoder().decode(icon.substring(icon.indexOf(',')+1))));
         check(decoded.getWidth()==64 && decoded.getHeight()==64,"normalized size");check(decoded.getRGB(32,63)==0xffff0000,"first animation frame");
