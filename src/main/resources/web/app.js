@@ -64,7 +64,7 @@ async function boot() {
     document.querySelectorAll('#local-login input').forEach(input=>input.disabled=method.mode==='discord');
     state.session=await api('/session'); $('#login').hidden=true; $('#app').hidden=false;
     $('#staff-name').textContent=displayStaffName(state.session.name); $('#staff-name').title=state.session.name; $('#staff-role').textContent=(state.session.rank||state.session.role).replaceAll('-', ' '); $('#staff-initial').textContent=displayStaffName(state.session.name).slice(0,2).toUpperCase();
-    $('#audit-nav').hidden=!isAdmin();
+    $('#audit-nav').hidden=!isAdmin(); $('#access-nav').hidden=!isAdmin(); $('#access-nav').hidden=!isAdmin();
     if (!isAdmin() && state.view==='audit') switchView('players');
     await refresh(true);
   } catch(e) { showLogin(); const message=new URLSearchParams(location.search).get('loginError'); if(message){$('#login-error').textContent=message;history.replaceState(null,'','/');}else if (!e.message.includes('sign in')) $('#login-error').textContent=e.message; }
@@ -205,12 +205,21 @@ $('#action-form').addEventListener('submit',async e=>{
 });
 function switchView(view){
   state.view=view;document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
-  for(const name of ['players','audit'])$('#'+name+'-view').hidden=name!==view;
-  $('#breadcrumb').textContent=({players:'Players',audit:'Audit trail'})[view];
+  for(const name of ['players','audit','access'])$('#'+name+'-view').hidden=name!==view;
+  $('#breadcrumb').textContent=({players:'Players',audit:'Audit trail',access:'Access Manager'})[view];
   $('#page-title').textContent=({players:'Players',audit:'Audit trail',integrations:'Integrations'})[view];
   if(view==='audit')loadAudit().catch(showError);
+  if(view==='access')loadAccess().catch(showError);
 }
 $('nav').addEventListener('click',e=>{const button=e.target.closest('[data-view]');if(button)switchView(button.dataset.view);});
+async function loadAccess(){
+  if(!isAdmin())return;
+  const data=await api('/access/ranks');
+  $('#access-ranks').innerHTML=data.ranks.length?
+    '<table><thead><tr><th>Rank</th><th>Discord role ID</th><th>Access</th></tr></thead><tbody>'+
+    data.ranks.map(r=>`<tr><td>${esc(r.name)}</td><td>${esc(r.discordRoleId)}</td><td>${esc(r.access)}</td></tr>`).join('')+'</tbody></table>'
+    :'<p class="muted">Discord authentication is not enabled.</p>';
+}
 async function loadAudit(){
   state.audit=await api('/audit');
   $('#audit-rows').innerHTML=state.audit.length?`<table><thead><tr><th>Time / staff</th><th>Action</th><th>Player UUID</th><th>Outcome</th></tr></thead><tbody>${state.audit.map(a=>`<tr><td>${date(a.at)}<br><strong>${esc(a.actor)}</strong></td><td>${esc(a.action)}</td><td>${esc(a.target||'—')}<details><summary>Details</summary><pre>${esc(JSON.stringify(a.detail,null,2))}</pre></details></td><td><span class="pill ${esc(a.state)}">${esc(a.state)}</span></td></tr>`).join('')}</tbody></table>`:'<div class="empty"><h2>No audit events yet</h2></div>';
