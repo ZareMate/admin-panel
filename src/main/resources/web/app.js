@@ -10,11 +10,11 @@ const initial = name => esc((name || '?').slice(0,2).toUpperCase());
 const skinName = name => /^[A-Za-z0-9_]{3,16}$/.test(String(name||'')) ? String(name) : '';
 const avatar = (name, uuid) => {
   const player=skinName(name);
-  return `<span class="avatar player-head">${player ? `<img src="https://mineskin.eu/helm/${encodeURIComponent(player)}/100.png" alt="" loading="lazy" referrerpolicy="no-referrer">` : ''}<span class="head-fallback">${initial(name)}</span></span>`;
+  return `<span class="avatar player-head">${player ? `<img src="/api/skin/head/${encodeURIComponent(player)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ''}<span class="head-fallback">${initial(name)}</span></span>`;
 };
 const fullSkin = name => {
   const player=skinName(name);
-  return player ? `<img class="full-skin" src="https://mineskin.eu/skin/${encodeURIComponent(player)}" alt="Full Minecraft skin" loading="lazy" referrerpolicy="no-referrer"><p class="muted" hidden>Skin unavailable</p>` : unavailable('Skin unavailable');
+  return player ? `<img class="full-skin" src="/api/skin/body/${encodeURIComponent(player)}" alt="Full Minecraft skin" loading="lazy" referrerpolicy="no-referrer"><p class="muted" hidden>Skin unavailable</p>` : unavailable('Skin unavailable');
 };
 // CSP disallows inline handlers; image state is managed by safe delegated listeners.
 document.addEventListener('load', e => {
