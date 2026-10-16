@@ -38,7 +38,7 @@ final class PanelServer implements AutoCloseable {
             x.getResponseHeaders().set("Cache-Control", "no-store");
             x.getResponseHeaders().set("X-Content-Type-Options", "nosniff");
             x.getResponseHeaders().set("Referrer-Policy", "no-referrer");
-            x.getResponseHeaders().set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://mc-heads.net; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
+            x.getResponseHeaders().set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://mineskin.eu; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
             String host = x.getRequestHeaders().getFirst("Host");
             if (!URI.create(config.origin()).getRawAuthority().equalsIgnoreCase(host)) throw new Failure(403, "Unrecognized host");
             route(x);
