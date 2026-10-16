@@ -19,7 +19,7 @@ final class FirstRunSetup implements AutoCloseable {
 
     FirstRunSetup(Path target) throws Exception {
         this.target = target;
-        server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 8);
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 8);
         server.setExecutor(workers);
         server.createContext("/", this::handle);
     }
