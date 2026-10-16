@@ -31,6 +31,9 @@ public final class ItemIconsTest {
         model(assets,"test:block","{\"parent\":\"minecraft:block/cube_all\"}");check(resolver.icon("test:block").isEmpty(),"3D fallback");
         model(assets,"test:casing","{\"parent\":\"minecraft:block/cube_all\",\"textures\":{\"all\":\"test:item/gem\"}}");
         check(!resolver.icon("test:casing").isEmpty(),"block model texture preview");
+        String casingSvg=new String(Base64.getDecoder().decode(resolver.icon("test:casing").split(",",2)[1]),StandardCharsets.UTF_8);
+        check(casingSvg.contains("<svg"),"block preview is SVG");
+        check(casingSvg.split("<clipPath ",-1).length-1==3,"cube displays three camera-facing sides");
         model(assets,"test:tool","{\"textures\":{\"0\":\"test:item/gem\"},\"elements\":[{\"from\":[0,0,0],\"to\":[16,16,16],\"faces\":{\"south\":{\"texture\":\"#0\"}}}]}");
         check(!resolver.icon("test:tool").isEmpty(),"static model face texture preview");
         check(!ItemIcons.png(new byte[24]),"invalid PNG rejected");
