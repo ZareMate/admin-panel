@@ -131,7 +131,7 @@ final class PanelServer implements AutoCloseable {
         if (path.equals("/api/logout") && post) { auth.logout(token); cookie(x, "", 0); json(x, 200, new JsonObject()); return; }
         if (discord != null) {
             if (session.discord() == null) { auth.logout(token); throw new Failure(401, "Sign in with Discord"); }
-            // Membership and rank were verified during OAuth login. Use the session snapshot.
+            // Role permissions are revalidated periodically and before mutations.
         }
         if (path.equals("/api/session") && !post) {
             JsonObject r = new JsonObject(); r.addProperty("name", user.name()); r.addProperty("role", user.role()); r.addProperty("rank", user.rank()); r.addProperty("csrf", session.csrf());
