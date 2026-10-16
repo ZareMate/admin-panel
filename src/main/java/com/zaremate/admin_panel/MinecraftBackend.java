@@ -22,9 +22,36 @@ final class MinecraftBackend implements Backend {
         catch (TimeoutException e) { task.cancel(false); throw new PanelServer.Failure(503, "Game server timed out. Execution may have started; inspect the player and audit trail before retrying."); }
         catch (ExecutionException e) { if (e.getCause() instanceof Exception cause) throw cause; throw e; }
     }
+    // Only inspect security records; avoid building full player profiles on each poll.
+    private static boolean hasDetection(UUID id) {
+        return detectedRecord("com.zaremate.tsa_anticheat.api.TsaAnticheatAPI", "getPlayer", id, true)
+            || detectedRecord("com.zaremate.airport_security_system.AirportSecuritySystemAPI", "getPlayerOffense", id, false);
+    }
+    private static boolean detectedRecord(String api, String method, UUID id, boolean tsa) {
+        try {
+            Object optional = Class.forName(api).getMethod(method, UUID.class).invoke(null, id);
+            if (!(optional instanceof Optional<?> result) || result.isEmpty()) return false;
+            Object record = result.get();
+            if (tsa) {
+                Object detections = record.getClass().getMethod("detections").invoke(record);
+                if (detections instanceof Collection<?> found && !found.isEmpty()) return true;
+                Object count = record.getClass().getMethod("packetModified").invoke(record);
+                return count instanceof Number number && number.longValue() > 0;
+            }
+            Object count = record.getClass().getMethod("detectedChecks").invoke(record);
+            return count instanceof Number number && number.longValue() > 0;
+        } catch (ReflectiveOperationException | LinkageError ignored) {
+            // Optional integrations may not be installed.
+            return false;
+        }
+    }
     public JsonObject players() throws Exception {
         return onServer(() -> {
             JsonObject r = JsonParser.parseString(AdminGuiData.buildPlayerList(server)).getAsJsonObject();
+            for (JsonElement entry : r.getAsJsonArray("players")) {
+                JsonObject player = entry.getAsJsonObject();
+                player.addProperty("hasDetections", hasDetection(UUID.fromString(player.get("uuid").getAsString())));
+            }
             r.addProperty("maxPlayers", server.getMaxPlayers());
             r.addProperty("version", server.getServerVersion());
             r.addProperty("punishAvailable", ModList.get().isLoaded("punish"));
