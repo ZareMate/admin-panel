@@ -34,7 +34,7 @@ final class FirstRunSetup implements AutoCloseable {
             x.getResponseHeaders().set("X-Content-Type-Options", "nosniff");
             x.getResponseHeaders().set("Referrer-Policy", "no-referrer");
             x.getResponseHeaders().set("Content-Security-Policy",
-                    "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
+                    "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
             if (!x.getRemoteAddress().getAddress().isLoopbackAddress()) throw new SetupFailure(403, "Local access only");
             String expected = "localhost:" + port();
             String host = x.getRequestHeaders().getFirst("Host");
