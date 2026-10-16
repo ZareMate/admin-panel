@@ -205,8 +205,8 @@ $('#action-form').addEventListener('submit',async e=>{
 });
 function switchView(view){
   state.view=view;document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
-  for(const name of ['players','audit','integrations'])$('#'+name+'-view').hidden=name!==view;
-  $('#breadcrumb').textContent=({players:'Players',audit:'Audit trail',integrations:'Integrations'})[view];
+  for(const name of ['players','audit'])$('#'+name+'-view').hidden=name!==view;
+  $('#breadcrumb').textContent=({players:'Players',audit:'Audit trail'})[view];
   $('#page-title').textContent=({players:'Players',audit:'Audit trail',integrations:'Integrations'})[view];
   if(view==='audit')loadAudit().catch(showError);
 }
@@ -216,5 +216,4 @@ async function loadAudit(){
   $('#audit-rows').innerHTML=state.audit.length?`<table><thead><tr><th>Time / staff</th><th>Action</th><th>Player UUID</th><th>Outcome</th></tr></thead><tbody>${state.audit.map(a=>`<tr><td>${date(a.at)}<br><strong>${esc(a.actor)}</strong></td><td>${esc(a.action)}</td><td>${esc(a.target||'—')}<details><summary>Details</summary><pre>${esc(JSON.stringify(a.detail,null,2))}</pre></details></td><td><span class="pill ${esc(a.state)}">${esc(a.state)}</span></td></tr>`).join('')}</tbody></table>`:'<div class="empty"><h2>No audit events yet</h2></div>';
 }
 $('#export-audit').addEventListener('click',()=>{const url=URL.createObjectURL(new Blob([JSON.stringify(state.audit,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='admin-panel-audit-'+new Date().toISOString().slice(0,10)+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});
-$('#integration-cards').innerHTML=[['Admin GUI','Required · 1.1.0+','Known player directory and aggregated player profiles.'],['Punish','Optional · compatible 1.0.0 API','Direct punishments, configured escalation, and offense case removal.'],['Admin Notes','Optional','Shared notes with author-controlled editing and removal.'],['TSA Anticheat','Optional','Packet checks and stored detections for player review.'],['Airport Security','Optional','Check results, detection counts, and clearance records.'],['FTB Teams','Optional','Team membership and player ranks.'],['Discord Link','Optional','Linked Discord identity and account information.'],['ClockIn','Optional','Clock-in status and recorded time.']].map(([name,tag,description])=>`<article class="card"><span class="pill">${esc(tag)}</span><h2>${esc(name)}</h2><p>${esc(description)}</p></article>`).join('');
 boot();
