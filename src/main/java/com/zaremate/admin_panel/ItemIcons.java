@@ -34,7 +34,11 @@ final class ItemIcons {
         if (!valid(id)) throw new IllegalArgumentException("Invalid item ID");
         if (cache.containsKey(id)) return cache.get(id);
         String result = "";
-        try { result = resolve(id); } catch (Exception | LinkageError error) { warn("Icon lookup failed for " + id + ": " + error.getClass().getSimpleName()); }
+        try {
+            byte[] exported = assets.read(exportedPath(id));
+            if (png(exported)) result = "data:image/png;base64," + Base64.getEncoder().encodeToString(exported);
+            else result = resolve(id);
+        } catch (Exception | LinkageError error) { warn("Icon lookup failed for " + id + ": " + error.getClass().getSimpleName()); }
         cache.put(id,result); return result;
     }
     JsonObject batch(JsonArray ids) {
@@ -45,6 +49,10 @@ final class ItemIcons {
         }
         for (JsonElement id : ids) result.addProperty(id.getAsString(),icon(id.getAsString()));
         return result;
+    }
+    static String exportedPath(String id) {
+        if (!valid(id)) throw new IllegalArgumentException("Invalid item ID");
+        return "icons/" + id.replace(":", "__") + ".png";
     }
     private String resolve(String item) throws Exception {
         String[] parts=item.split(":",2);String model=parts[0]+":item/"+parts[1];
