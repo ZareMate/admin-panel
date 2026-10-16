@@ -28,6 +28,10 @@ document.addEventListener('error', e => {
     if(e.target.nextElementSibling) e.target.nextElementSibling.hidden=false;
   }
 }, true);
+const hasDetections = p => Boolean(p.hasDetections ||
+  (p.tsa?.available && ((p.tsa.detections?.length || 0) > 0 || Number(p.tsa.packetModified || 0) > 0)) ||
+  (p.ass?.available && Number(p.ass.detectedChecks || 0) > 0));
+const detectionClass = p => hasDetections(p) ? 'detected-name' : '';
 const playerLocation = p => {
   const l=p.location;
   if(!l?.available)return unavailable('No saved location available');
@@ -103,7 +107,7 @@ function renderPlayers() {
   const query=$('#search').value.trim().toLowerCase();
   const rows=state.players.filter(p=>(!query || p.name.toLowerCase().includes(query) || p.uuid.includes(query)) && (state.filter==='all' || p.online === (state.filter==='online')));
   $('#filtered-count').textContent=rows.length;
-  $('#player-rows').innerHTML=rows.length?rows.map(p=>`<button class="player-row ${p.uuid===state.selected?'selected':''}" data-player="${esc(p.uuid)}" aria-pressed="${p.uuid===state.selected}">${avatar(p.name,p.uuid)}<span><strong>${esc(p.name)}</strong><small class="${p.online?'online':''}">${p.online?'● Online':'Offline'}</small></span><span class="arrow">›</span></button>`).join(''):'<div class="empty"><h2>No players found</h2><p>Try another name or status filter.</p></div>';
+  $('#player-rows').innerHTML=rows.length?rows.map(p=>`<button class="player-row ${p.uuid===state.selected?'selected':''}" data-player="${esc(p.uuid)}" aria-pressed="${p.uuid===state.selected}">${avatar(p.name,p.uuid)}<span><strong class="${detectionClass(p)}">${esc(p.name)}</strong><small class="${p.online?'online':''}">${p.online?'● Online':'Offline'}</small></span><span class="arrow">›</span></button>`).join(''):'<div class="empty"><h2>No players found</h2><p>Try another name or status filter.</p></div>';
 }
 $('#search').addEventListener('input',renderPlayers);
 $('.filter-tabs').addEventListener('click',e=>{const button=e.target.closest('[data-filter]'); if(!button)return; state.filter=button.dataset.filter; document.querySelectorAll('[data-filter]').forEach(b=>b.classList.toggle('selected',b===button));renderPlayers();});
@@ -117,7 +121,7 @@ async function loadPlayer(id, reset) {
 }
 function renderDetail() {
   const p=state.detail;if(!p)return;
-  $('#detail').innerHTML=`<div class="profile-head">${avatar(p.name,p.uuid)}<div><h2>${esc(p.name)} <span class="pill ${p.online?'online':''}">${p.online?'● Online':'Offline'}</span></h2><div class="uuid">${esc(p.uuid)}</div></div><div class="profile-actions">${canModerate()?`<button class="primary" data-action="punish" ${!p.punish?.available?'disabled':''}>＋ Issue punishment</button>`:''}</div></div><div class="detail-tabs">${[['overview','Overview'],['cases','Punishments',p.cases?.length],['notes','Staff notes',p.notes?.length],['security','Security'],['inventory','Inventory'],['enderChest','Ender Chest'],['curios','Curios']].map(([key,label,count])=>`<button data-tab="${key}" class="${state.tab===key?'active':''}">${label}${count!==undefined?' · '+count:''}</button>`).join('')}</div><div class="detail-body">${({overview:overview,cases:cases,notes:notes,security:security,inventory:p=>storage(p,'inventory'),enderChest:p=>storage(p,'enderChest'),curios:p=>storage(p,'curios')})[state.tab](p)}</div>`;
+  $('#detail').innerHTML=`<div class="profile-head">${avatar(p.name,p.uuid)}<div><h2><span class="${detectionClass(p)}">${esc(p.name)}</span> <span class="pill ${p.online?'online':''}">${p.online?'● Online':'Offline'}</span></h2><div class="uuid">${esc(p.uuid)}</div></div><div class="profile-actions">${canModerate()?`<button class="primary" data-action="punish" ${!p.punish?.available?'disabled':''}>＋ Issue punishment</button>`:''}</div></div><div class="detail-tabs">${[['overview','Overview'],['cases','Punishments',p.cases?.length],['notes','Staff notes',p.notes?.length],['security','Security'],['inventory','Inventory'],['enderChest','Ender Chest'],['curios','Curios']].map(([key,label,count])=>`<button data-tab="${key}" class="${state.tab===key?'active':''}">${label}${count!==undefined?' · '+count:''}</button>`).join('')}</div><div class="detail-body">${({overview:overview,cases:cases,notes:notes,security:security,inventory:p=>storage(p,'inventory'),enderChest:p=>storage(p,'enderChest'),curios:p=>storage(p,'curios')})[state.tab](p)}</div>`;
   loadItemIcons();
 }
 function unavailable(text='No record available') {return `<p>${esc(text)}</p>`;}
