@@ -87,7 +87,9 @@ final class PanelServer implements AutoCloseable {
                 DiscordAuth.Login login = discord.finish(query.getOrDefault("state", ""), namedCookie(x,"panel_oauth"), query.get("code"), query.containsKey("error"));
                 audit.write(login.user().name(), "discord-login", "", "success", new JsonObject());
                 auth.logout(cookieToken(x));
-                cookie(x, auth.create(login.user(), login.grant()), 28800);
+                String sessionToken = auth.create(login.user(), login.grant());
+                roleValidatedAt.put(sessionToken, System.currentTimeMillis());
+                cookie(x, sessionToken, 28800);
                 oauthCookie(x, "", 0);
                 redirect(x, "/");
             } catch (Exception failure) {
@@ -114,7 +116,7 @@ final class PanelServer implements AutoCloseable {
         if (discord != null && session.discord() != null) {
             long now = System.currentTimeMillis();
             Long last = roleValidatedAt.get(token);
-            if (last == null || now - last >= ROLE_RECHECK_MS || post) {
+            if (!path.equals("/api/logout") && (last == null || now - last >= ROLE_RECHECK_MS || post)) {
                 try {
                     // Authorization failures and API outages fail closed.
                     user = discord.authorize(session.discord());
@@ -128,7 +130,7 @@ final class PanelServer implements AutoCloseable {
             }
         }
         if (post && !session.csrf().equals(x.getRequestHeaders().getFirst("X-CSRF-Token"))) throw new Failure(403, "Invalid CSRF token");
-        if (path.equals("/api/logout") && post) { auth.logout(token); cookie(x, "", 0); json(x, 200, new JsonObject()); return; }
+        if (path.equals("/api/logout") && post) { roleValidatedAt.remove(token); auth.logout(token); cookie(x, "", 0); json(x, 200, new JsonObject()); return; }
         if (discord != null) {
             if (session.discord() == null) { auth.logout(token); throw new Failure(401, "Sign in with Discord"); }
             // Role permissions are revalidated periodically and before mutations.
@@ -156,7 +158,8 @@ final class PanelServer implements AutoCloseable {
             return;
         }
         if (path.equals("/api/access/ranks") && !post) {
-            if (!user.isAdmin()) throw new Failure(403, "Administrator role required");
+            if (config.discord() == null || !user.isAdmin() || !Set.of("owner", "dev").contains(user.rank()))
+                throw new Failure(403, "Owner or developer rank required");
             JsonObject result = new JsonObject();
             result.add("ranks", config.discord() == null ? new JsonArray() : config.discord().accessRanks());
             json(x, 200, result); return;
