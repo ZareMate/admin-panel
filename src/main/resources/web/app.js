@@ -64,8 +64,8 @@ async function boot() {
     document.querySelectorAll('#local-login input').forEach(input=>input.disabled=method.mode==='discord');
     state.session=await api('/session'); $('#login').hidden=true; $('#app').hidden=false;
     $('#staff-name').textContent=displayStaffName(state.session.name); $('#staff-name').title=state.session.name; $('#staff-role').textContent=(state.session.rank||state.session.role).replaceAll('-', ' '); $('#staff-initial').textContent=displayStaffName(state.session.name).slice(0,2).toUpperCase();
-    $('#audit-nav').hidden=!isAdmin(); $('#access-nav').hidden=!isAdmin(); $('#access-nav').hidden=!isAdmin();
-    if (!isAdmin() && state.view==='audit') switchView('players');
+    $('#audit-nav').hidden=!isAdmin(); $('#access-nav').hidden=!isAdmin();
+    if (!isAdmin() && ['audit','access'].includes(state.view)) switchView('players');
     await refresh(true);
   } catch(e) { showLogin(); const message=new URLSearchParams(location.search).get('loginError'); if(message){$('#login-error').textContent=message;history.replaceState(null,'','/');}else if (!e.message.includes('sign in')) $('#login-error').textContent=e.message; }
 }
@@ -86,7 +86,7 @@ async function refresh(force=false) {
     }
     $('#staff-role').textContent=(state.session.rank||state.session.role).replaceAll('-', ' ');
     $('#audit-nav').hidden=!isAdmin();
-    if(!isAdmin()&&state.view==='audit')switchView('players');
+    if(!isAdmin()&&['audit','access'].includes(state.view))switchView('players');
     const data=await api('/players'); state.players=data.players;
     $('#nav-count').textContent=state.players.length; $('#stat-total').textContent=state.players.length;
     $('#stat-online').textContent=data.serverPlayers; $('#stat-capacity').textContent=`of ${data.maxPlayers} available slots`;
@@ -97,7 +97,7 @@ async function refresh(force=false) {
     if (state.selected && !$('#action-dialog').open && (force || Date.now()-lastDetailRefresh>=10000)) {
       lastDetailRefresh=Date.now(); await loadPlayer(state.selected, false);
     }
-    if (state.view==='audit' && force) await loadAudit();
+    if (['audit','access'].includes(state.view) && force) await loadAudit();
   } catch(e) { $('#connection-text').textContent='Connection interrupted'; $('#connection-dot').classList.add('stale'); showError(e); }
   finally { state.refreshBusy=false; $('#refresh').disabled=false; }
 }
@@ -207,7 +207,7 @@ function switchView(view){
   state.view=view;document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
   for(const name of ['players','audit','access'])$('#'+name+'-view').hidden=name!==view;
   $('#breadcrumb').textContent=({players:'Players',audit:'Audit trail',access:'Access Manager'})[view];
-  $('#page-title').textContent=({players:'Players',audit:'Audit trail',integrations:'Integrations'})[view];
+  $('#page-title').textContent=({players:'Players',audit:'Audit trail',access:'Access Manager'})[view];
   if(view==='audit')loadAudit().catch(showError);
   if(view==='access')loadAccess().catch(showError);
 }
