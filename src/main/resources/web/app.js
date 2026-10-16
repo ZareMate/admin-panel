@@ -190,19 +190,44 @@ function openAction(data){
   $('#action-warning').textContent=note?'This change is saved to Admin Notes and logged in the audit trail.':data.action==='revoke'?'This removes the entire configured offense case, including its related punishments. The reason is kept in the web audit trail.':'This applies immediately through the server’s Punish mod and is recorded in the audit trail.';
   $('#submit-action').textContent=removing?'Remove note':data.action==='revoke'?'Remove case':note?'Save note':'Confirm punishment';
   for(const option of $('#punish-type').options) option.disabled=!isAdmin()&&['BAN','OFFENSE'].includes(option.value);
+  // Default to a configured offense for admins; moderators cannot issue offenses.
+  $('#punish-type').value=isAdmin()&&p.punish?.offenses?.length?'OFFENSE':'WARN';
   $('#offense-select').innerHTML=(p.punish?.offenses||[]).map(o=>`<option value="${esc(o.id)}">${esc(o.name||o.id)} · ${esc(o.group||'')}</option>`).join('');
   if(data.note){const n=p.notes.find(n=>n.id===data.note);if(n)form.elements.text.value=n.text;}
   updateActionFields();$('#action-dialog').showModal();
 }
-function updateActionFields(){const type=$('#punish-type').value;$('#duration-label').hidden=!['MUTE','BAN'].includes(type);$('#offense-label').hidden=type!=='OFFENSE';$('#offense-select').required=type==='OFFENSE'&&actionContext?.action==='punish';const o=state.detail?.punish?.offenses?.find(o=>o.id===$('#offense-select').value);$('#offense-steps').textContent=o?.steps?'Escalation: '+o.steps.join(' → '):'';}
+function updateActionFields(){const type=$('#punish-type').value;$('#duration-label').hidden=!['MUTE','BAN'].includes(type);$('#punish-duration').required=['MUTE','BAN'].includes(type);$('#offense-label').hidden=type!=='OFFENSE';$('#offense-select').required=type==='OFFENSE'&&actionContext?.action==='punish';const o=state.detail?.punish?.offenses?.find(o=>o.id===$('#offense-select').value);$('#offense-steps').textContent=o?.steps?'Escalation: '+o.steps.join(' → '):'';}
 $('#punish-type').addEventListener('change',updateActionFields);$('#offense-select').addEventListener('change',updateActionFields);
 function closeDialog(){if(!state.busy)$('#action-dialog').close();}
 $('#close-dialog').addEventListener('click',closeDialog);$('#cancel-dialog').addEventListener('click',closeDialog);
 $('#action-dialog').addEventListener('cancel',e=>{if(state.busy)e.preventDefault();});
+// Punish API accepts whole minutes (0 = permanent), capped at ten years.
+function parsePunishDuration(input) {
+  const value=String(input||'').trim().toLowerCase();
+  if(['perm','permanent','forever'].includes(value))return 0;
+  const match=/^(\\d+)\\s*(m|min|h|d|w)$/.exec(value);
+  if(!match)throw new Error('Invalid duration. Use 30m, 1h, 3d, 1w or perm.');
+  const factor={m:1,min:1,h:60,d:1440,w:10080}[match[2]];
+  const minutes=Number(match[1])*factor;
+  if(!Number.isSafeInteger(minutes)||minutes<1||minutes>5256000)
+    throw new Error('Duration must be between 1 minute and 10 years, or perm.');
+  return minutes;
+}
 $('#action-form').addEventListener('submit',async e=>{
   e.preventDefault();if(state.busy)return;state.busy=true;$('#submit-action').disabled=true;$('#action-error').textContent='';
   const ctx={...actionContext},fields=Object.fromEntries(new FormData(e.target));
-  const body=ctx.action==='punish'?{type:fields.type,offense:fields.offense,durationMinutes:Number(fields.durationMinutes),silent:fields.silent==='on',reason:fields.reason}:ctx.action==='revoke'?{caseId:Number(ctx.caseId),reason:fields.reason}:{text:fields.text,noteId:ctx.noteId};
+  let body;
+  try {
+    body=ctx.action==='punish'?{type:fields.type,offense:fields.offense,
+      durationMinutes:['MUTE','BAN'].includes(fields.type)?parsePunishDuration(fields.duration):0,
+      silent:fields.silent==='on',reason:fields.reason}
+      :ctx.action==='revoke'?{caseId:Number(ctx.caseId),reason:fields.reason}
+      :{text:fields.text,noteId:ctx.noteId};
+  } catch(err) {
+    $('#action-error').textContent=err.message;
+    state.busy=false;$('#submit-action').disabled=false;
+    return;
+  }
   try {
     await api('/players/'+ctx.uuid+'/'+ctx.action,body,ctx.requestId);$('#action-dialog').close();toast('Action saved successfully.');
     try{await loadPlayer(ctx.uuid,false);}catch(err){showError(err);}
