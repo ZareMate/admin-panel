@@ -28,7 +28,7 @@ public final class AdminPanel {
             }
             Config config = Config.load(configPath);
             if (config == null) { LoggerFactory.getLogger("admin_panel").info("Web panel disabled. Configure config/admin-panel.properties to enable."); return; }
-            panel = new PanelServer(config, new MinecraftBackend(event.getServer()), new Audit(root.resolve("logs/admin-panel-audit.jsonl")));
+            panel = new PanelServer(config, new MinecraftBackend(event.getServer()), new Audit(root.resolve("logs/admin-panel-audit.jsonl")), config.discord() == null ? null : new HttpDiscordApi(config.discord()), configPath);
             panel.start();
             LoggerFactory.getLogger("admin_panel").info("Admin Panel listening on {}:{} (origin {})", config.bind(), config.port(), config.origin());
         } catch (Exception e) { LoggerFactory.getLogger("admin_panel").error("Admin Panel could not start", e); }
