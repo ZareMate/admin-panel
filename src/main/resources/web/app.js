@@ -7,14 +7,14 @@ const canModerate = () => ['admin','moderator'].includes(state.session?.role);
 const isAdmin = () => state.session?.role === 'admin';
 const displayStaffName = name => String(name || '').replace(/ \[\d{17,20}\]$/, '');
 const initial = name => esc((name || '?').slice(0,2).toUpperCase());
-const skinName = name => /^[A-Za-z0-9_]{3,16}$/.test(String(name||'')) ? name : '';
+const skinName = name => /^[A-Za-z0-9_]{3,16}$/.test(String(name||'')) ? String(name) : '';
 const avatar = (name, uuid) => {
   const player=skinName(name);
-  return `<span class="avatar player-head">${player ? `<img src="/api/skin/head/${encodeURIComponent(player)}" alt="" loading="lazy">` : ''}<span class="head-fallback">${initial(name)}</span></span>`;
+  return `<span class="avatar player-head">${player ? `<img src="/api/skin/head/${encodeURIComponent(player)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ''}<span class="head-fallback">${initial(name)}</span></span>`;
 };
 const fullSkin = name => {
   const player=skinName(name);
-  return player ? `<img class="full-skin" src="/api/skin/body/${encodeURIComponent(player)}" alt="Full Minecraft skin" loading="lazy"><p class="muted" hidden>Skin unavailable</p>` : unavailable('Skin unavailable');
+  return player ? `<img class="full-skin" src="/api/skin/body/${encodeURIComponent(player)}" alt="Full Minecraft skin" loading="lazy" referrerpolicy="no-referrer"><p class="muted" hidden>Skin unavailable</p>` : unavailable('Skin unavailable');
 };
 // CSP disallows inline handlers; image state is managed by safe delegated listeners.
 document.addEventListener('load', e => {

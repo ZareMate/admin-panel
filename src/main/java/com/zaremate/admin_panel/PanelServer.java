@@ -118,11 +118,12 @@ final class PanelServer implements AutoCloseable {
             json(x, 200, r); return;
         }
         if (path.startsWith("/api/skin/") && !post) {
-            String[] imageParts = path.split("/");
-            if (imageParts.length != 5 || !Set.of("head", "body").contains(imageParts[3]) || !imageParts[4].matches("[A-Za-z0-9_]{3,16}")) throw new Failure(404, "Not found");
-            byte[] image = skinCache.load(imageParts[3], imageParts[4]);
+            String[] parts = path.split("/");
+            if (parts.length != 5 || !Set.of("head", "body").contains(parts[3]) || !parts[4].matches("[A-Za-z0-9_]{3,16}"))
+                throw new Failure(404, "Not found");
+            byte[] png = skinCache.load(parts[3], parts[4]);
             x.getResponseHeaders().set("Cache-Control", "private, max-age=21600");
-            bytes(x, 200, "image/png", image);
+            bytes(x, 200, "image/png", png);
             return;
         }
         if (path.equals("/api/icons") && post) {
