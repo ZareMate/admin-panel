@@ -4,6 +4,7 @@ import com.google.gson.*;
 import com.zaremate.admin_gui.AdminGuiData;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.nbt.*;
+import net.minecraft.stats.Stats;
 import net.minecraft.world.level.storage.LevelResource;
 import java.nio.file.*;
 import net.neoforged.fml.ModList;
@@ -60,7 +61,18 @@ final class MinecraftBackend implements Backend {
         });
     }
     public JsonObject player(UUID id, Auth.User viewer) throws Exception { return onServer(() -> {
-        JsonObject result = detail(id, viewer); result.add("storage", InventoryData.read(server, id)); result.add("location", location(id)); return result;
+        JsonObject result = detail(id, viewer); result.add("storage", InventoryData.read(server, id)); result.add("location", location(id));
+        // Vanilla PLAY_TIME is stored in ticks and includes offline players.
+        JsonObject playtime = new JsonObject();
+        try {
+            int ticks = server.getPlayerList().getPlayerStats(id).getValue(Stats.CUSTOM.get(Stats.PLAY_TIME));
+            playtime.addProperty("seconds", Math.max(0L, ticks / 20L));
+            playtime.addProperty("available", true);
+        } catch (Exception unavailable) {
+            playtime.addProperty("available", false);
+        }
+        result.add("playtime", playtime);
+        return result;
     }); }
     private JsonObject location(UUID id) {
         JsonObject out = new JsonObject();
