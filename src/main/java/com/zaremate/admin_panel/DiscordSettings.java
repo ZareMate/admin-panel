@@ -1,6 +1,7 @@
 package com.zaremate.admin_panel;
 
 import java.util.*;
+import com.google.gson.*;
 import java.nio.charset.StandardCharsets;
 
 record DiscordSettings(String clientId, String clientSecret, String guildId,
@@ -44,6 +45,17 @@ record DiscordSettings(String clientId, String clientSecret, String guildId,
         return access;
     }
     String rank(Set<String> memberRoles) { return rankNames.get(highest(memberRoles)); }
+    JsonArray accessRanks() {
+        JsonArray result = new JsonArray();
+        roles.forEach((id, access) -> {
+            JsonObject rank = new JsonObject();
+            rank.addProperty("name", rankNames.get(id));
+            rank.addProperty("discordRoleId", id);
+            rank.addProperty("access", access);
+            result.add(rank);
+        });
+        return result;
+    }
     UUID uuid(String discordId) {
         return minecraft.getOrDefault(discordId, UUID.nameUUIDFromBytes(("admin-panel:discord:" + discordId).getBytes(StandardCharsets.UTF_8)));
     }
