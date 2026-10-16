@@ -5,6 +5,7 @@ const date = value => value ? new Date(Number(value)).toLocaleString() : '—';
 const state = {session:null, players:[], selected:null, detail:null, filter:'all', tab:'overview', view:'players', audit:[], busy:false, refreshBusy:false, detailVersion:0};
 const canModerate = () => ['admin','moderator'].includes(state.session?.role);
 const isAdmin = () => state.session?.role === 'admin';
+const displayStaffName = name => String(name || '').replace(/ \[\d{17,20}\]$/, '');
 const initial = name => esc((name || '?').slice(0,2).toUpperCase());
 async function api(path, body, requestId) {
   const headers = {};
@@ -31,10 +32,10 @@ async function boot() {
     $('#discord-login').hidden=method.mode!=='discord';
     document.querySelectorAll('#local-login input').forEach(input=>input.disabled=method.mode==='discord');
     state.session=await api('/session'); $('#login').hidden=true; $('#app').hidden=false;
-    $('#staff-name').textContent=state.session.name; $('#staff-role').textContent=(state.session.rank||state.session.role).replaceAll('-', ' '); $('#staff-initial').textContent=state.session.name.slice(0,2).toUpperCase();
+    $('#staff-name').textContent=displayStaffName(state.session.name); $('#staff-name').title=state.session.name; $('#staff-role').textContent=(state.session.rank||state.session.role).replaceAll('-', ' '); $('#staff-initial').textContent=displayStaffName(state.session.name).slice(0,2).toUpperCase();
     $('#audit-nav').hidden=!isAdmin();
     if (!isAdmin() && state.view==='audit') switchView('players');
-    await refresh();
+    await refresh(true);
   } catch(e) { showLogin(); const message=new URLSearchParams(location.search).get('loginError'); if(message){$('#login-error').textContent=message;history.replaceState(null,'','/');}else if (!e.message.includes('sign in')) $('#login-error').textContent=e.message; }
 }
 $('#login-form').addEventListener('submit',async e=>{
@@ -43,11 +44,15 @@ $('#login-form').addEventListener('submit',async e=>{
   catch(err) { $('#login-error').textContent=err.message; } finally { button.disabled=false; }
 });
 $('#logout').addEventListener('click',async()=>{try {await api('/logout',{}); showLogin();} catch(e){showError(e);}});
-async function refresh() {
+let lastSessionRefresh=0;
+let lastDetailRefresh=0;
+async function refresh(force=false) {
   if (!state.session || state.refreshBusy) return;
   state.refreshBusy=true; $('#refresh').disabled=true;
   try {
-    state.session=await api('/session');
+    if(force || Date.now()-lastSessionRefresh>=60000){
+      state.session=await api('/session'); lastSessionRefresh=Date.now();
+    }
     $('#staff-role').textContent=(state.session.rank||state.session.role).replaceAll('-', ' ');
     $('#audit-nav').hidden=!isAdmin();
     if(!isAdmin()&&state.view==='audit')switchView('players');
@@ -58,13 +63,15 @@ async function refresh() {
     $('#last-sync').textContent='Updated '+new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
     $('#connection-text').textContent='Server connected'; $('#connection-dot').classList.remove('stale'); $('#page-error').hidden=true;
     renderPlayers();
-    if (state.selected && !$('#action-dialog').open) await loadPlayer(state.selected, false);
-    if (state.view==='audit') await loadAudit();
+    if (state.selected && !$('#action-dialog').open && (force || Date.now()-lastDetailRefresh>=10000)) {
+      lastDetailRefresh=Date.now(); await loadPlayer(state.selected, false);
+    }
+    if (state.view==='audit' && force) await loadAudit();
   } catch(e) { $('#connection-text').textContent='Connection interrupted'; $('#connection-dot').classList.add('stale'); showError(e); }
   finally { state.refreshBusy=false; $('#refresh').disabled=false; }
 }
-$('#refresh').addEventListener('click',refresh);
-setInterval(()=>{if(!document.hidden && !$('#action-dialog').open) refresh();},30000);
+$('#refresh').addEventListener('click',()=>refresh(true));
+setInterval(()=>{if(!document.hidden && !$('#action-dialog').open) refresh();},5000);
 function renderPlayers() {
   const query=$('#search').value.trim().toLowerCase();
   const rows=state.players.filter(p=>(!query || p.name.toLowerCase().includes(query) || p.uuid.includes(query)) && (state.filter==='all' || p.online === (state.filter==='online')));
