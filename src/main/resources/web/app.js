@@ -7,14 +7,14 @@ const canModerate = () => ['admin','moderator'].includes(state.session?.role);
 const isAdmin = () => state.session?.role === 'admin';
 const displayStaffName = name => String(name || '').replace(/ \[\d{17,20}\]$/, '');
 const initial = name => esc((name || '?').slice(0,2).toUpperCase());
-const skinId = uuid => /^[0-9a-fA-F-]{32,36}$/.test(String(uuid||'')) ? String(uuid).replaceAll('-','') : '';
+const skinName = name => /^[A-Za-z0-9_]{3,16}$/.test(String(name||'')) ? String(name) : '';
 const avatar = (name, uuid) => {
-  const id=skinId(uuid);
-  return `<span class="avatar player-head">${id ? `<img src="https://mc-heads.net/avatar/${id}/64" alt="" loading="lazy" referrerpolicy="no-referrer">` : ''}<span class="head-fallback">${initial(name)}</span></span>`;
+  const player=skinName(name);
+  return `<span class="avatar player-head">${player ? `<img src="https://mineskin.eu/helm/${encodeURIComponent(player)}/100.png" alt="" loading="lazy" referrerpolicy="no-referrer">` : ''}<span class="head-fallback">${initial(name)}</span></span>`;
 };
-const fullSkin = uuid => {
-  const id=skinId(uuid);
-  return id ? `<img class="full-skin" src="https://mc-heads.net/player/${id}/256" alt="Full Minecraft skin" loading="lazy" referrerpolicy="no-referrer"><p class="muted" hidden>Skin unavailable</p>` : unavailable('Skin unavailable');
+const fullSkin = name => {
+  const player=skinName(name);
+  return player ? `<img class="full-skin" src="https://mineskin.eu/skin/${encodeURIComponent(player)}" alt="Full Minecraft skin" loading="lazy" referrerpolicy="no-referrer"><p class="muted" hidden>Skin unavailable</p>` : unavailable('Skin unavailable');
 };
 // CSP disallows inline handlers; image state is managed by safe delegated listeners.
 document.addEventListener('load', e => {
@@ -125,7 +125,7 @@ function info(title,html,wide=false){return `<article class="info-card ${wide?'w
 function pairs(data){return `<dl>${data.map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(v ?? '—')}</dd>`).join('')}</dl>`;}
 function overview(p){
   const current=(p.cases||[]).filter(c=>c.active&&(!c.until||c.until>Date.now())&&['ban','mute'].includes(c.type));
-  return `<div class="info-grid">${info('Location',playerLocation(p))}${info('Player skin',fullSkin(p.uuid))}${info('Moderation summary',pairs([['Current bans / mutes',current.length],['Recorded punishments',p.cases?.length||0],['Staff notes',p.notes?.length||0],['Punish integration',p.punish?.available?'Available':'Unavailable']]))}${info('Discord identity',p.discord?.available?pairs([['Display name',p.discord.displayName],['Account',p.discord.discordTag],['Discord ID',p.discord.discordId],['Linked',date(p.discord.linkedAt)]]):unavailable('No linked Discord account'))}${info('FTB Team',p.teams?.available?`<p><strong>${esc(p.teams.name)}</strong></p>${(p.teams.members||[]).map(m=>`<p>${esc(m.name)} <span class="pill">${esc(m.rankDisplay||m.rank)}</span></p>`).join('')}`:unavailable('No team record available'))}${info('ClockIn',p.clockin?.available?pairs([['Status',p.clockin.clockedIn?'Clocked in':'Clocked out'],['Total time',Math.floor(p.clockin.totalSeconds/3600)+'h '+Math.floor(p.clockin.totalSeconds%3600/60)+'m']]):unavailable())}${info('Review before acting',`<p>Check security evidence, previous punishments, and staff notes before issuing an action. Configured offenses use the Punish mod’s escalation rules.</p>`,true)}</div>`;
+  return `<div class="info-grid">${info('Location',playerLocation(p))}${info('Player skin',fullSkin(p.name))}${info('Moderation summary',pairs([['Current bans / mutes',current.length],['Recorded punishments',p.cases?.length||0],['Staff notes',p.notes?.length||0],['Punish integration',p.punish?.available?'Available':'Unavailable']]))}${info('Discord identity',p.discord?.available?pairs([['Display name',p.discord.displayName],['Account',p.discord.discordTag],['Discord ID',p.discord.discordId],['Linked',date(p.discord.linkedAt)]]):unavailable('No linked Discord account'))}${info('FTB Team',p.teams?.available?`<p><strong>${esc(p.teams.name)}</strong></p>${(p.teams.members||[]).map(m=>`<p>${esc(m.name)} <span class="pill">${esc(m.rankDisplay||m.rank)}</span></p>`).join('')}`:unavailable('No team record available'))}${info('ClockIn',p.clockin?.available?pairs([['Status',p.clockin.clockedIn?'Clocked in':'Clocked out'],['Total time',Math.floor(p.clockin.totalSeconds/3600)+'h '+Math.floor(p.clockin.totalSeconds%3600/60)+'m']]):unavailable())}${info('Review before acting',`<p>Check security evidence, previous punishments, and staff notes before issuing an action. Configured offenses use the Punish mod’s escalation rules.</p>`,true)}</div>`;
 }
 function caseStatus(c){if(c.removedBy)return 'removed';if(c.until&&c.until<=Date.now())return 'expired';if(!c.active)return c.replaced?'replaced':'inactive';if(['warn','kick'].includes(c.type))return 'recorded';return 'current';}
 function cases(p){
