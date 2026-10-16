@@ -46,7 +46,15 @@ public final class PanelTest {
         check(!auth.allowLogin("test"),"login rate limit");
         Path dir=Files.createTempDirectory("admin-panel-test-");
         Path configFile=dir.resolve("config.properties");
-        check(Config.load(configFile)==null,"disabled by default");
+        try {
+            Config.load(configFile);
+            throw new AssertionError("Missing config should require first-run setup");
+        } catch (IllegalStateException expected) {
+            check(expected.getMessage().contains("first-run setup"), "missing config requires first-run setup");
+            check(!Files.exists(configFile), "missing config must not be silently created");
+        }
+        Files.writeString(configFile, "enabled=false\n");
+        check(Config.load(configFile)==null, "explicitly disabled configuration stays disabled");
         String account = "user.admin=admin,00000000-0000-0000-0000-000000000001," + hash + "\n";
         String lanConfig = "enabled=true\nbind=0.0.0.0\norigin=http://10.0.0.1:8080\n" + account;
         Files.writeString(configFile,lanConfig);
