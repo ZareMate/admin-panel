@@ -63,7 +63,9 @@ final class ModelPreview {
                     depth+=v[2];v[0]=32+4*(v[0]+translation[0]);v[1]=32-4*(v[1]+translation[1]);
                 }
                 double area=(p[1][0]-p[0][0])*(p[3][1]-p[0][1])-(p[1][1]-p[0][1])*(p[3][0]-p[0][0]);
-                if(area>0.0001)faces.add(new Face(p,mapped,texture,depth/4));
+                // Screen Y points down, so camera-facing polygons have negative signed area.
+                // The previous positive test displayed back/bottom faces of blocks.
+                if(area < -0.0001)faces.add(new Face(p,mapped,texture,depth/4));
             }
         }
         if(faces.isEmpty())return "";
