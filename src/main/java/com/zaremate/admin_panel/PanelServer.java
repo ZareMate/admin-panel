@@ -18,6 +18,10 @@ final class PanelServer implements AutoCloseable {
     private final HttpServer server;
     private final ExecutorService workers;
     private final SkinCache skinCache = new SkinCache();
+    private final ExecutorService skinWorkers = new ThreadPoolExecutor(2, 2, 0,
+            TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(16), new ThreadPoolExecutor.AbortPolicy());
+    private final ConcurrentHashMap<String, Long> roleValidatedAt = new ConcurrentHashMap<>();
+    private static final long ROLE_RECHECK_MS = 5 * 60_000L;
     // Session-scoped request IDs are retained for the session lifetime. Never silently replay a mutation.
     private final Map<String, Long> requests = new HashMap<>();
     PanelServer(Config config, Backend backend, Audit audit) throws Exception {
@@ -33,7 +37,7 @@ final class PanelServer implements AutoCloseable {
     }
     void start() { server.start(); }
     int port() { return server.getAddress().getPort(); }
-    public void close() { server.stop(1); workers.shutdownNow(); }
+    public void close() { server.stop(1); workers.shutdownNow(); skinWorkers.shutdownNow(); }
     private void handle(HttpExchange x) {
         try {
             x.getResponseHeaders().set("Cache-Control", "no-store");
@@ -107,6 +111,22 @@ final class PanelServer implements AutoCloseable {
         Auth.Session session = auth.get(token);
         if (session == null) throw new Failure(401, "Please sign in");
         Auth.User user = session.user();
+        if (discord != null && session.discord() != null) {
+            long now = System.currentTimeMillis();
+            Long last = roleValidatedAt.get(token);
+            if (last == null || now - last >= ROLE_RECHECK_MS || post) {
+                try {
+                    // Authorization failures and API outages fail closed.
+                    user = discord.authorize(session.discord());
+                    auth.refresh(token, user);
+                    roleValidatedAt.put(token, now);
+                } catch (Exception invalid) {
+                    roleValidatedAt.remove(token);
+                    auth.logout(token);
+                    throw invalid;
+                }
+            }
+        }
         if (post && !session.csrf().equals(x.getRequestHeaders().getFirst("X-CSRF-Token"))) throw new Failure(403, "Invalid CSRF token");
         if (path.equals("/api/logout") && post) { auth.logout(token); cookie(x, "", 0); json(x, 200, new JsonObject()); return; }
         if (discord != null) {
@@ -121,10 +141,25 @@ final class PanelServer implements AutoCloseable {
             String[] parts = path.split("/");
             if (parts.length != 5 || !Set.of("head", "body").contains(parts[3]) || !parts[4].matches("[A-Za-z0-9_]{3,16}"))
                 throw new Failure(404, "Not found");
-            byte[] png = skinCache.load(parts[3], parts[4]);
+            Future<byte[]> task;
+            try { task = skinWorkers.submit(() -> skinCache.load(parts[3], parts[4])); }
+            catch (RejectedExecutionException busy) { throw new Failure(503, "Skin service busy"); }
+            byte[] png;
+            try { png = task.get(10, TimeUnit.SECONDS); }
+            catch (TimeoutException slow) { task.cancel(true); throw new Failure(504, "Skin service timed out"); }
+            catch (ExecutionException error) {
+                if (error.getCause() instanceof Exception cause) throw cause;
+                throw error;
+            }
             x.getResponseHeaders().set("Cache-Control", "private, max-age=21600");
             bytes(x, 200, "image/png", png);
             return;
+        }
+        if (path.equals("/api/access/ranks") && !post) {
+            if (!user.isAdmin()) throw new Failure(403, "Administrator role required");
+            JsonObject result = new JsonObject();
+            result.add("ranks", config.discord() == null ? new JsonArray() : config.discord().accessRanks());
+            json(x, 200, result); return;
         }
         if (path.equals("/api/icons") && post) {
             JsonObject b=body(x);
