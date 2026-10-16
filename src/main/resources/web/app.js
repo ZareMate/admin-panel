@@ -218,14 +218,43 @@ function switchView(view){
   if(view==='access')loadAccess().catch(showError);
 }
 $('nav').addEventListener('click',e=>{const button=e.target.closest('[data-view]');if(button)switchView(button.dataset.view);});
+let accessRows=[];
+function renderAccess(){
+  const table=$('#access-ranks');
+  table.innerHTML='<table><thead><tr><th>Rank</th><th>Discord role ID</th><th>Access</th><th>Order</th></tr></thead><tbody>'+
+  accessRows.map((r,i)=>`<tr data-rank-index="${i}"><td><input data-field="name" value="${esc(r.name)}" aria-label="Rank name"></td><td><input data-field="discordRoleId" value="${esc(r.discordRoleId)}" aria-label="Discord role ID"></td><td><select data-field="access">${['admin','moderator','viewer','deny'].map(v=>`<option value="${v}" ${v===r.access?'selected':''}>${v}</option>`).join('')}</select></td><td><button class="secondary small" data-rank-action="up" ${i===0?'disabled':''}>↑</button> <button class="secondary small" data-rank-action="down" ${i===accessRows.length-1?'disabled':''}>↓</button> <button class="danger small" data-rank-action="remove">×</button></td></tr>`).join('')+'</tbody></table>';
+}
 async function loadAccess(){
   if(!canManageAccess())return;
   const data=await api('/access/ranks');
-  $('#access-ranks').innerHTML=data.ranks.length?
-    '<table><thead><tr><th>Rank</th><th>Discord role ID</th><th>Access</th></tr></thead><tbody>'+
-    data.ranks.map(r=>`<tr><td>${esc(r.name)}</td><td>${esc(r.discordRoleId)}</td><td>${esc(r.access)}</td></tr>`).join('')+'</tbody></table>'
-    :'<p class="muted">Discord authentication is not enabled.</p>';
+  accessRows=data.ranks.map(r=>({...r}));
+  $('#access-message').textContent='';
+  renderAccess();
 }
+$('#access-ranks').addEventListener('input',e=>{
+  const row=e.target.closest('[data-rank-index]'),field=e.target.dataset.field;
+  if(row && field) accessRows[Number(row.dataset.rankIndex)][field]=e.target.value;
+});
+$('#access-ranks').addEventListener('change',e=>{
+  const row=e.target.closest('[data-rank-index]'),field=e.target.dataset.field;
+  if(row && field) accessRows[Number(row.dataset.rankIndex)][field]=e.target.value;
+});
+$('#access-ranks').addEventListener('click',e=>{
+  const b=e.target.closest('[data-rank-action]');if(!b)return;
+  const i=Number(b.closest('[data-rank-index]').dataset.rankIndex),kind=b.dataset.rankAction;
+  if(kind==='remove')accessRows.splice(i,1);
+  else {const other=i+(kind==='up'?-1:1);if(other<0||other>=accessRows.length)return;[accessRows[i],accessRows[other]]=[accessRows[other],accessRows[i]];}
+  renderAccess();
+});
+$('#access-add').addEventListener('click',()=>{if(accessRows.length>=30)return;accessRows.push({name:'',discordRoleId:'',access:'viewer'});renderAccess();});
+$('#access-save').addEventListener('click',async()=>{
+  if(!canManageAccess())return;
+  if(!confirm('Save rank changes? The Minecraft server must restart before permissions change.'))return;
+  $('#access-save').disabled=true;
+  try {await api('/access/ranks',{ranks:accessRows});$('#access-message').textContent='Saved. Restart Minecraft to apply the new rank permissions.';toast('Rank configuration saved');}
+  catch(e){$('#access-message').textContent=e.message;}
+  finally{$('#access-save').disabled=false;}
+});
 async function loadAudit(){
   state.audit=await api('/audit');
   $('#audit-rows').innerHTML=state.audit.length?`<table><thead><tr><th>Time / staff</th><th>Action</th><th>Player UUID</th><th>Outcome</th></tr></thead><tbody>${state.audit.map(a=>`<tr><td>${date(a.at)}<br><strong>${esc(a.actor)}</strong></td><td>${esc(a.action)}</td><td>${esc(a.target||'—')}<details><summary>Details</summary><pre>${esc(JSON.stringify(a.detail,null,2))}</pre></details></td><td><span class="pill ${esc(a.state)}">${esc(a.state)}</span></td></tr>`).join('')}</tbody></table>`:'<div class="empty"><h2>No audit events yet</h2></div>';
