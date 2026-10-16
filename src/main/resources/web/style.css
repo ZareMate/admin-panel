@@ -13,6 +13,8 @@
 /* Minecraft player heads and full-body preview. */
 .player-head{position:relative;overflow:hidden}
 .player-head img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;image-rendering:pixelated;border-radius:inherit}
-.player-head img:not([hidden])+.head-fallback{visibility:hidden}
+.player-head img{visibility:hidden}
+.player-head.head-loaded img{visibility:visible}
+.player-head.head-loaded .head-fallback{visibility:hidden}
 .player-head .head-fallback{display:flex;align-items:center;justify-content:center;width:100%;height:100%}
 .full-skin{display:block;height:200px;max-width:100%;width:auto;margin:4px auto 0;object-fit:contain;image-rendering:pixelated}
