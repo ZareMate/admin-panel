@@ -6,6 +6,8 @@ version = '1.2.3'
 group = 'com.zaremate.admin_panel'
 base { archivesName = 'admin_panel' }
 java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+// Icon Exporter PNGs live in src/resources/icons and are bundled in the mod JAR.
+sourceSets.main.resources.srcDir 'src/resources'
 runs {
     configureEach {
         workingDirectory project.layout.projectDirectory.dir('run').dir(name)
