@@ -10,12 +10,24 @@ const initial = name => esc((name || '?').slice(0,2).toUpperCase());
 const skinId = uuid => /^[0-9a-fA-F-]{32,36}$/.test(String(uuid||'')) ? String(uuid).replaceAll('-','') : '';
 const avatar = (name, uuid) => {
   const id=skinId(uuid);
-  return `<span class="avatar player-head">${id ? `<img src="https://mc-heads.net/avatar/${id}/64" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.hidden=true">` : ''}<span class="head-fallback">${initial(name)}</span></span>`;
+  return `<span class="avatar player-head">${id ? `<img src="https://mc-heads.net/avatar/${id}/64" alt="" loading="lazy" referrerpolicy="no-referrer">` : ''}<span class="head-fallback">${initial(name)}</span></span>`;
 };
 const fullSkin = uuid => {
   const id=skinId(uuid);
-  return id ? `<img class="full-skin" src="https://mc-heads.net/body/${id}/160" alt="Full Minecraft skin" loading="lazy" referrerpolicy="no-referrer" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><p class="muted" hidden>Skin unavailable</p>` : unavailable('Skin unavailable');
+  return id ? `<img class="full-skin" src="https://mc-heads.net/player/${id}/256" alt="Full Minecraft skin" loading="lazy" referrerpolicy="no-referrer"><p class="muted" hidden>Skin unavailable</p>` : unavailable('Skin unavailable');
 };
+// CSP disallows inline handlers; image state is managed by safe delegated listeners.
+document.addEventListener('load', e => {
+  if(e.target.matches?.('.player-head img')) e.target.parentElement.classList.add('head-loaded');
+  if(e.target.matches?.('.full-skin')) e.target.classList.add('skin-loaded');
+}, true);
+document.addEventListener('error', e => {
+  if(e.target.matches?.('.player-head img')) e.target.parentElement.classList.remove('head-loaded');
+  if(e.target.matches?.('.full-skin')) {
+    e.target.hidden=true;
+    if(e.target.nextElementSibling) e.target.nextElementSibling.hidden=false;
+  }
+}, true);
 const playerLocation = p => {
   const l=p.location;
   if(!l?.available)return unavailable('No saved location available');
