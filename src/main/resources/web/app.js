@@ -5,6 +5,7 @@ const date = value => value ? new Date(Number(value)).toLocaleString() : '—';
 const state = {session:null, players:[], selected:null, detail:null, filter:'all', tab:'overview', view:'players', audit:[], busy:false, refreshBusy:false, detailVersion:0};
 const canModerate = () => ['admin','moderator'].includes(state.session?.role);
 const isAdmin = () => state.session?.role === 'admin';
+const canManageAccess = () => isAdmin() && ['owner','dev'].includes(state.session?.rank);
 const displayStaffName = name => String(name || '').replace(/ \[\d{17,20}\]$/, '');
 const initial = name => esc((name || '?').slice(0,2).toUpperCase());
 const skinName = name => /^[A-Za-z0-9_]{3,16}$/.test(String(name||'')) ? String(name) : '';
@@ -64,8 +65,8 @@ async function boot() {
     document.querySelectorAll('#local-login input').forEach(input=>input.disabled=method.mode==='discord');
     state.session=await api('/session'); $('#login').hidden=true; $('#app').hidden=false;
     $('#staff-name').textContent=displayStaffName(state.session.name); $('#staff-name').title=state.session.name; $('#staff-role').textContent=(state.session.rank||state.session.role).replaceAll('-', ' '); $('#staff-initial').textContent=displayStaffName(state.session.name).slice(0,2).toUpperCase();
-    $('#audit-nav').hidden=!isAdmin(); $('#access-nav').hidden=!isAdmin();
-    if (!isAdmin() && ['audit','access'].includes(state.view)) switchView('players');
+    $('#audit-nav').hidden=!isAdmin(); $('#access-nav').hidden=!canManageAccess();
+    if ((state.view==='audit' && !isAdmin()) || (state.view==='access' && !canManageAccess())) switchView('players');
     await refresh(true);
   } catch(e) { showLogin(); const message=new URLSearchParams(location.search).get('loginError'); if(message){$('#login-error').textContent=message;history.replaceState(null,'','/');}else if (!e.message.includes('sign in')) $('#login-error').textContent=e.message; }
 }
@@ -86,7 +87,7 @@ async function refresh(force=false) {
     }
     $('#staff-role').textContent=(state.session.rank||state.session.role).replaceAll('-', ' ');
     $('#audit-nav').hidden=!isAdmin();
-    if(!isAdmin()&&['audit','access'].includes(state.view))switchView('players');
+    if ((state.view==='audit' && !isAdmin()) || (state.view==='access' && !canManageAccess())) switchView('players');
     const data=await api('/players'); state.players=data.players;
     $('#nav-count').textContent=state.players.length; $('#stat-total').textContent=state.players.length;
     $('#stat-online').textContent=data.serverPlayers; $('#stat-capacity').textContent=`of ${data.maxPlayers} available slots`;
@@ -213,7 +214,7 @@ function switchView(view){
 }
 $('nav').addEventListener('click',e=>{const button=e.target.closest('[data-view]');if(button)switchView(button.dataset.view);});
 async function loadAccess(){
-  if(!isAdmin())return;
+  if(!canManageAccess())return;
   const data=await api('/access/ranks');
   $('#access-ranks').innerHTML=data.ranks.length?
     '<table><thead><tr><th>Rank</th><th>Discord role ID</th><th>Access</th></tr></thead><tbody>'+
