@@ -1,0 +1,74 @@
+plugins {
+    id 'java-library'
+    id 'net.neoforged.gradle.userdev' version '7.1.38'
+}
+version = '1.2.3'
+group = 'com.zaremate.admin_panel'
+base { archivesName = 'admin_panel' }
+java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+runs {
+    configureEach {
+        workingDirectory project.layout.projectDirectory.dir('run').dir(name)
+        modSource project.sourceSets.main
+    }
+    server { argument '--nogui' }
+}
+configurations { runtimeClasspath.extendsFrom localRuntime }
+def adminGuiJar = providers.gradleProperty('adminGuiJar').getOrElse('../admin-gui/build/libs/admin_gui-1.1.0.jar')
+def punishJar = providers.gradleProperty('punishJar').getOrElse('../punish/build/libs/punish-1.0.0.jar')
+dependencies {
+    implementation 'net.neoforged:neoforge:21.1.249'
+    compileOnly files(adminGuiJar, punishJar)
+}
+tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }
+tasks.register('panelTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.zaremate.admin_panel.PanelTest'
+    jvmArgs '-ea'
+}
+// This project uses an executable HTTP integration suite instead of a JUnit engine.
+tasks.named('test') { enabled = false }
+tasks.named('check') { dependsOn 'panelTest' }
+tasks.register('browserTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.zaremate.admin_panel.BrowserTest'
+    jvmArgs '-ea'
+}
+tasks.named('check') { dependsOn 'browserTest' }
+tasks.register('discordTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.zaremate.admin_panel.DiscordTest'
+    jvmArgs '-ea'
+}
+tasks.named('check') { dependsOn 'discordTest' }
+tasks.register('iconTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.zaremate.admin_panel.ItemIconsTest'
+    jvmArgs '-ea', '-Djava.awt.headless=true'
+}
+tasks.named('check') { dependsOn 'iconTest' }
+tasks.register('discordHttpTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.zaremate.admin_panel.DiscordHttpTest'
+    jvmArgs '-ea'
+}
+tasks.named('check') { dependsOn 'discordHttpTest' }
+tasks.register('iconFallbackTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.zaremate.admin_panel.IconFallbackTest'
+    jvmArgs '--limit-modules', 'java.base,java.logging'
+}
+tasks.named('check') { dependsOn 'iconFallbackTest' }
+tasks.register('installedIconTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.zaremate.admin_panel.InstalledIconTest'
+    args providers.gradleProperty('modAssetsPath').getOrElse('run/server/mods')
+    jvmArgs '-Djava.awt.headless=true'
+}

@@ -1,0 +1,33 @@
+modLoader="javafml"
+loaderVersion="[1,)"
+license="MIT"
+[[mods]]
+modId="admin_panel"
+version="1.2.3"
+displayName="Admin Panel"
+authors="ZareMate"
+description='''Authenticated web administration for Admin GUI and Punish.'''
+[[dependencies.admin_panel]]
+modId="neoforge"
+type="required"
+versionRange="[21.1.249,)"
+ordering="NONE"
+side="SERVER"
+[[dependencies.admin_panel]]
+modId="minecraft"
+type="required"
+versionRange="[1.21.1]"
+ordering="NONE"
+side="SERVER"
+[[dependencies.admin_panel]]
+modId="admin_gui"
+type="required"
+versionRange="[1.1.0,)"
+ordering="AFTER"
+side="SERVER"
+[[dependencies.admin_panel]]
+modId="punish"
+type="optional"
+versionRange="[1.0.0,)"
+ordering="AFTER"
+side="SERVER"
