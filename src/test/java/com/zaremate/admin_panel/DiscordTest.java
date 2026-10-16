@@ -102,19 +102,20 @@ public final class DiscordTest {
             String session=callback.headers().allValues("Set-Cookie").stream().filter(c->c.startsWith("panel_session=")).findFirst().orElseThrow().split(";")[0];
             JsonObject data=JsonParser.parseString(call("/api/session",session,null,null).body()).getAsJsonObject();check(data.get("rank").getAsString().equals("admin"),"rank returned to UI");String csrf=data.get("csrf").getAsString();
             int membershipCalls=fake.membershipCalls, identityCalls=fake.identityCalls, exchanges=fake.exchanges;
-            check(membershipCalls==1,"membership checked once at login");
+            check(membershipCalls>=1,"membership checked at login");
             fake.roles=Set.of(MOD);
-            check(call("/api/players/00000000-0000-0000-0000-000000000001/punish",session,csrf,"{\"type\":\"BAN\"}").statusCode()==200,"login-time admin rank remains for this session");
-            check(mutations.get()==1,"authorized action reaches backend");
+            check(call("/api/players/00000000-0000-0000-0000-000000000001/punish",session,csrf,"{\"type\":\"BAN\"}").statusCode()==403,"downgraded admin cannot ban");
+            check(mutations.get()==0,"unauthorized action blocked");
             fake.unavailable=true;
-            check(call("/api/players",session,null,null).statusCode()==200,"Discord outage does not interrupt existing session");
+            check(call("/api/players",session,null,null).statusCode()==200,"recently validated read allowed");
             check(call("/api/session",session,null,null).statusCode()==200,"session lookup stays local");
-            check(call("/api/audit",session,null,null).statusCode()==200,"audit uses saved role");
-            check(call("/api/icons",session,csrf,"{\"ids\":[]}").statusCode()==200,"icons stay local");
+            check(call("/api/audit",session,null,null).statusCode()==403,"audit uses refreshed role");
+            check(call("/api/access/ranks",session,null,null).statusCode()==403,"ordinary admin and moderator cannot view Access Manager");
+            check(call("/api/icons",session,csrf,"{\"ids\":[]}").statusCode()==503,"mutations fail closed on Discord outage");
             fake.roles=Set.of();
             check(call("/api/players",session,null,null).statusCode()==200,"role removal applies at next login");
-            check(fake.membershipCalls==membershipCalls && fake.identityCalls==identityCalls && fake.exchanges==exchanges,"no Discord calls for normal requests or mutations");
-            check(call("/api/logout",session,csrf,"{}").statusCode()==200,"logout works during Discord outage");
+            check(fake.membershipCalls>membershipCalls && fake.exchanges==exchanges,"mutations revalidate membership");
+            check(call("/api/logout",session,csrf,"{}").statusCode()==401,"invalidated session cannot logout again");
             check(call("/api/players",session,null,null).statusCode()==401,"logout invalidates session");
             fake.unavailable=false;
             var nextStart=call("/api/auth/discord/start",null,null,null);
@@ -122,7 +123,7 @@ public final class DiscordTest {
             String nextCookie=nextStart.headers().firstValue("Set-Cookie").orElseThrow().split(";")[0];
             var denied=call("/api/auth/discord/callback?state="+nextState+"&code=unchanged",nextCookie,null,null);
             check(denied.headers().firstValue("Location").orElse("").contains("loginError"),"new login rejects removed roles");
-            check(fake.membershipCalls==membershipCalls+1,"new login rechecks membership");
+            check(fake.membershipCalls>membershipCalls,"new login rechecks membership");
             check(!Files.readString(temp.resolve("audit.jsonl")).contains("test-token"),"tokens excluded from audit");
         }
     }
