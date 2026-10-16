@@ -65,7 +65,16 @@ final class MinecraftBackend implements Backend {
         // Vanilla PLAY_TIME is stored in ticks and includes offline players.
         JsonObject playtime = new JsonObject();
         try {
-            int ticks = server.getPlayerList().getPlayerStats(id).getValue(Stats.CUSTOM.get(Stats.PLAY_TIME));
+            var online = server.getPlayerList().getPlayer(id);
+            long ticks;
+            if (online != null) {
+                ticks = server.getPlayerList().getPlayerStats(online).getValue(Stats.CUSTOM.get(Stats.PLAY_TIME));
+            } else {
+                Path file = server.getWorldPath(LevelResource.ROOT).resolve("stats").resolve(id + ".json");
+                JsonObject stats = JsonParser.parseString(Files.readString(file)).getAsJsonObject()
+                        .getAsJsonObject("stats").getAsJsonObject("minecraft:custom");
+                ticks = stats.get("minecraft:play_time").getAsLong();
+            }
             playtime.addProperty("seconds", Math.max(0L, ticks / 20L));
             playtime.addProperty("available", true);
         } catch (Exception unavailable) {
