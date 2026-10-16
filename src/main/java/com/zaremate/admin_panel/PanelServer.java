@@ -17,6 +17,7 @@ final class PanelServer implements AutoCloseable {
     private final Audit audit;
     private final HttpServer server;
     private final ExecutorService workers;
+    private final SkinCache skinCache = new SkinCache();
     // Session-scoped request IDs are retained for the session lifetime. Never silently replay a mutation.
     private final Map<String, Long> requests = new HashMap<>();
     PanelServer(Config config, Backend backend, Audit audit) throws Exception {
@@ -38,7 +39,7 @@ final class PanelServer implements AutoCloseable {
             x.getResponseHeaders().set("Cache-Control", "no-store");
             x.getResponseHeaders().set("X-Content-Type-Options", "nosniff");
             x.getResponseHeaders().set("Referrer-Policy", "no-referrer");
-            x.getResponseHeaders().set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://mc-heads.net; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
+            x.getResponseHeaders().set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
             String host = x.getRequestHeaders().getFirst("Host");
             if (!URI.create(config.origin()).getRawAuthority().equalsIgnoreCase(host)) throw new Failure(403, "Unrecognized host");
             route(x);
@@ -115,6 +116,14 @@ final class PanelServer implements AutoCloseable {
         if (path.equals("/api/session") && !post) {
             JsonObject r = new JsonObject(); r.addProperty("name", user.name()); r.addProperty("role", user.role()); r.addProperty("rank", user.rank()); r.addProperty("csrf", session.csrf());
             json(x, 200, r); return;
+        }
+        if (path.startsWith("/api/skin/") && !post) {
+            String[] imageParts = path.split("/");
+            if (imageParts.length != 5 || !Set.of("head", "body").contains(imageParts[3]) || !imageParts[4].matches("[A-Za-z0-9_]{3,16}")) throw new Failure(404, "Not found");
+            byte[] image = skinCache.load(imageParts[3], imageParts[4]);
+            x.getResponseHeaders().set("Cache-Control", "private, max-age=21600");
+            bytes(x, 200, "image/png", image);
+            return;
         }
         if (path.equals("/api/icons") && post) {
             JsonObject b=body(x);
