@@ -113,7 +113,7 @@ public final class DiscordTest {
             check(call("/api/access/ranks",session,null,null).statusCode()==403,"ordinary admin and moderator cannot view Access Manager");
             check(call("/api/icons",session,csrf,"{\"ids\":[]}").statusCode()==503,"mutations fail closed on Discord outage");
             fake.roles=Set.of();
-            check(call("/api/players",session,null,null).statusCode()==200,"role removal applies at next login");
+            check(call("/api/players",session,null,null).statusCode()==401,"failed revalidation revokes session");
             check(fake.membershipCalls>membershipCalls && fake.exchanges==exchanges,"mutations revalidate membership");
             check(call("/api/logout",session,csrf,"{}").statusCode()==401,"invalidated session cannot logout again");
             check(call("/api/players",session,null,null).statusCode()==401,"logout invalidates session");
@@ -124,6 +124,20 @@ public final class DiscordTest {
             var denied=call("/api/auth/discord/callback?state="+nextState+"&code=unchanged",nextCookie,null,null);
             check(denied.headers().firstValue("Location").orElse("").contains("loginError"),"new login rejects removed roles");
             check(fake.membershipCalls>membershipCalls,"new login rechecks membership");
+            fake.roles=Set.of(DiscordSettings.DEFAULT_IDS.get("owner"));
+            var ownerStart=call("/api/auth/discord/start",null,null,null);
+            String ownerState=PanelServer.query(URI.create(ownerStart.headers().firstValue("Location").orElseThrow()).getRawQuery()).get("state");
+            String ownerCookie=ownerStart.headers().firstValue("Set-Cookie").orElseThrow().split(";")[0];
+            var ownerCallback=call("/api/auth/discord/callback?state="+ownerState+"&code=unchanged",ownerCookie,null,null);
+            String ownerSession=ownerCallback.headers().allValues("Set-Cookie").stream().filter(c->c.startsWith("panel_session=")).findFirst().orElseThrow().split(";")[0];
+            check(call("/api/access/ranks",ownerSession,null,null).statusCode()==200,"owner can access rank mapping");
+            fake.roles=Set.of(DiscordSettings.DEFAULT_IDS.get("dev"));
+            var devStart=call("/api/auth/discord/start",null,null,null);
+            String devState=PanelServer.query(URI.create(devStart.headers().firstValue("Location").orElseThrow()).getRawQuery()).get("state");
+            String devCookie=devStart.headers().firstValue("Set-Cookie").orElseThrow().split(";")[0];
+            var devCallback=call("/api/auth/discord/callback?state="+devState+"&code=unchanged",devCookie,null,null);
+            String devSession=devCallback.headers().allValues("Set-Cookie").stream().filter(c->c.startsWith("panel_session=")).findFirst().orElseThrow().split(";")[0];
+            check(call("/api/access/ranks",devSession,null,null).statusCode()==200,"dev can access rank mapping");
             check(!Files.readString(temp.resolve("audit.jsonl")).contains("test-token"),"tokens excluded from audit");
         }
     }
