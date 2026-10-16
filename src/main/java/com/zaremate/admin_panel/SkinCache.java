@@ -24,7 +24,7 @@ final class SkinCache {
         Entry cached = images.get(key);
         if (cached != null && cached.expiry() > now) return cached.png();
         String url = kind.equals("head") ? "https://mineskin.eu/helm/" + username + "/100.png"
-                : "https://mineskin.eu/skin/" + username;
+                : "https://mineskin.eu/armor/body/" + username + "/256.png";
         var request = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(8))
                 .header("Accept", "image/png").GET().build();
         var response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
