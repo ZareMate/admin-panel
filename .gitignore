@@ -12,6 +12,7 @@ debug/
 
 # Local configuration
 config/admin-panel.properties
+config/admin-panel-bridge.properties
 .env
 .env.*
 !.env.example
@@ -56,3 +57,8 @@ Thumbs.db
 *.bak
 *.swp
 *~
+# Standalone Node service
+node_modules/
+web-server/dist/
+web-server/data/
+web-server/public/icons/

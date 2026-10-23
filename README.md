@@ -1,6 +1,29 @@
 # Admin Panel
 
-A server-side web companion to [ZareMate/admin-gui](https://github.com/ZareMate/admin-gui), for **Minecraft 1.21.1 / NeoForge 21.1.249 / Java 21**. The HTTP server runs inside the Minecraft server. Clients only need a browser; no separate Node service or database is required.
+A server-side web companion to [ZareMate/admin-gui](https://github.com/ZareMate/admin-gui), for **Minecraft 1.21.1 / NeoForge 21.1.249 / Java 21**. The website runs in a separate Node.js service using Fastify and React. Minecraft opens an outbound authenticated WebSocket connection to it; no panel HTTP port is opened inside Minecraft. Clients only need a browser.
+
+## Separate Node web app
+
+The hosting app is **Fastify + TypeScript**, with a **React + TypeScript** frontend in [`web-server/`](web-server/README.md). Minecraft opens one outbound WebSocket connection to its `/bridge` route. The page, API, and WebSocket share one port; no web listener or certificate files run inside Minecraft.
+
+`gradle build` produces:
+
+- `build/libs/admin_panel-2.0.0.jar` for Minecraft.
+- `build/distributions/admin_panel-2.0.0-web.zip` for Node hosting. Unpack it and run `npm ci --omit=dev`, `npm run setup`, then `npm start` after configuring it.
+
+For source development: `cd web-server`, `npm ci`, `npm run build`, `npm run setup`, then `npm start`. Node.js 22.12+ is required. Configuration and persistent audit data live on the web host. Existing properties files, account hashes, Discord UUID mappings, and audit history can be copied across.
+
+Minecraft's `config/admin-panel-bridge.properties`:
+
+```properties
+enabled=true
+url=wss://YOUR_WEB_HOST/bridge
+token=SAME_VALUE_AS_ADMIN_PANEL_BRIDGE_TOKEN_ON_THE_WEB_HOST
+```
+
+For a trusted private plaintext connection use `ws://HOST:PORT/bridge` with `allow-insecure-ws=true`. The web host handles HTTPS if available; this app does not require you to create certificates on the Minecraft hosting. See the [Node deployment guide](web-server/README.md) for hosting variables, plain WS, HTTPS proxying, and migration. A framework alone does not provide a trusted certificate for an HTTP-only hosting endpoint.
+
+The earlier standalone Java web-service JAR has been replaced; use the Node archive above. No second WebSocket port is required.
 
 ## Features
 
@@ -23,35 +46,35 @@ The player profile has read-only **Inventory**, **Ender Chest**, and **Curios** 
 - Curios: equipped and cosmetic groups via the installed Curios API (1.21.1 API shape, checked against 9.2.2). Offline Curios is explicitly unavailable.
 - Item details: names, registry IDs, stack counts, durability, enchantments, and lore. Expand an occupied slot for details.
 
-Icons come from assets bundled in installed mod jars. The resolver follows generated/handheld item model parents and texture references, composites up to five layers, and shows the first square frame of vertical animation strips. Results are resized to 64×64 PNGs and cached in memory. Icons are requested in authenticated batches, not separate requests per slot.
+Icons are rendered on the web host using bundled PNGs and optional mod jars copied into its `data/assets/` directory (read as ZIP data, never loaded as mods). The resolver follows generated/handheld item model parents and texture references, composites up to five layers, and shows the first square frame of vertical animation strips. Results are resized to 64×64 PNGs and cached in memory. Icons are requested in authenticated batches, not separate requests per slot.
 
-This is a texture preview, not Minecraft’s client renderer. Block and static 3D models show a representative face texture preview, not a rendered 3D item. Custom renderers, state-dependent model overrides, tint colors, unusual animation metadata, and client resource-pack overrides are not reproduced. On runtimes lacking Java desktop/image-processing support, the resolver serves the original first-layer PNG instead of dropping the icon; layer composition and first-frame cropping are unavailable in that mode. Icon request failures are shown in the panel, and lookup/conversion failures are logged with bounded warnings. Vanilla/client-only textures may be absent on a dedicated server. Unsupported or missing assets keep a labeled fallback with the full item name and ID; item information remains usable.
+The Node host renders generated textures and static cuboid geometry, including model UVs and GUI transforms, using Sharp. This is a preview, not Minecraft's client renderer: custom renderers, world tinting, state-dependent overrides, and client resource-pack overrides retain labeled fallbacks. Item information remains available when an icon cannot be rendered. Java desktop/image-processing support is not required on Minecraft or the web host.
 
 ## Build
 
 ```sh
-gradle build panelTest
+gradle build
 ```
 
 The default build uses the sibling repositories’ built jars:
 
-- `../admin-gui/build/libs/admin_gui-1.1.0.jar`
+- `../admin-gui/build/libs/admin_gui-2.0.0.jar`
 - `../punish/build/libs/punish-1.0.0.jar`
 
 To build from another checkout:
 
 ```sh
-gradle build panelTest -PadminGuiJar=/absolute/path/admin_gui-1.1.0.jar -PpunishJar=/absolute/path/punish-1.0.0.jar
+gradle build -PadminGuiJar=/absolute/path/admin_gui-2.0.0.jar -PpunishJar=/absolute/path/punish-1.0.0.jar
 ```
 
-Both jars are required at compile time and are **not bundled**. Output: `build/libs/admin_panel-1.2.3.jar`. The integration targets Admin GUI source revision `39628eb` and the accompanying Punish API, including `PunishService.removeOffense`; older jars with the same version label may lack those methods.
+Both jars are required at compile time and are **not bundled**. Output: `build/libs/admin_panel-2.0.0.jar`. The default build targets Admin GUI 2.0.0 and the Punish API including `PunishService.removeOffense`.
 
 ## Install and configure Discord login
 
-1. Replace the old panel jar in the dedicated server’s `mods/` folder with `admin_panel-1.2.3.jar`. Keep Admin GUI and the desired integration mods installed; remove older panel jars.
+1. Replace the old panel jar in the dedicated server’s `mods/` folder with `admin_panel-2.0.0.jar`. Keep Admin GUI and the desired integration mods installed; remove older panel jars.
 2. Create/select an application in the [Discord Developer Portal](https://discord.com/developers/applications). Copy its OAuth2 **client ID** and **client secret** into the server configuration. A bot token is not needed.
 3. Register the **exact** OAuth2 redirect URI `<origin>/api/auth/discord/callback`. For the current LAN origin this is `http://10.0.0.1:8080/api/auth/discord/callback`. If Discord does not accept your chosen HTTP redirect, use the HTTPS proxy setup below and register that HTTPS origin instead.
-4. Merge the settings below into `config/admin-panel.properties`, set `enabled=true`, and restart Minecraft. The browser shows **Continue with Discord**.
+4. Merge the settings below into `config/admin-panel.properties`, set `enabled=true` on the web host and restart the Node service. The browser shows **Continue with Discord**.
 
 ```properties
 enabled=true
@@ -66,9 +89,9 @@ discord.guild-id=1506410587553398854
 discord.rank-order=dev,owner,admin,mod,trial-mod,helper,trial-helper
 ```
 
-The secret can instead come from `ADMIN_PANEL_DISCORD_CLIENT_SECRET`, which takes precedence over the config entry. Keep it server-side; it is never sent to the browser. In Docker, publish TCP 8080 from the container running Minecraft.
+The secret can instead come from `ADMIN_PANEL_DISCORD_CLIENT_SECRET`, which takes precedence over the config entry. Keep it server-side; it is never sent to the browser. In Docker, publish TCP 8080 from the container running the standalone web service.
 
-The complete [default configuration](src/main/resources/admin-panel-default.properties) includes all supplied role IDs and their configurable access levels:
+The complete [default configuration](src/main/resources/admin-panel-default.properties) includes the required role-ID fields and their configurable access levels:
 
 | Rank (highest first) | Discord role ID | Default panel access |
 | --- | --- | --- |
@@ -80,7 +103,7 @@ The complete [default configuration](src/main/resources/admin-panel-default.prop
 | helper | `1512987186893557820` | viewer |
 | trial-helper | `1521965611121377280` | viewer |
 
-For each rank, set `discord.rank.<rank>.role-id` and `discord.rank.<rank>.access`. Access accepts `admin`, `moderator`, `viewer`, or `deny`. The **first matching rank** in `discord.rank-order` wins—even if a lower rank is configured with greater access. Discord’s visual role ordering and other Discord permissions do not override this configuration. Users with no matching rank are denied. Changing settings requires a Minecraft server restart.
+For each rank, set `discord.rank.<rank>.role-id` and `discord.rank.<rank>.access`. Access accepts `admin`, `moderator`, `viewer`, or `deny`. The **first matching rank** in `discord.rank-order` wins—even if a lower rank is configured with greater access. Discord’s visual role ordering and other Discord permissions do not override this configuration. Users with no matching rank are denied. Changing settings requires a Node service restart.
 
 For example, to make trial moderators read-only:
 
@@ -138,7 +161,7 @@ allow-insecure-http=true
 # Keep your auth.mode=discord and discord.* settings here.
 ```
 
-`origin` is the literal URL used in the browser, not a Markdown link. Inside Docker, bind to `0.0.0.0` rather than the host's LAN IP, and publish TCP port 8080 from the container running Minecraft to the host. Host-network containers can instead bind an address available on that host. Restart Minecraft after replacing the jar and changing configuration. Remove the older panel jar to avoid duplicate mod IDs.
+`origin` is the literal URL used in the browser, not a Markdown link. Inside Docker, bind to `0.0.0.0` rather than the host's LAN IP, and publish TCP port 8080 from the container running the standalone web service to the host. Host-network containers can instead bind an address available on that host. Restart the Node service after changing web configuration; restart Minecraft after replacing its bridge jar. Remove the older panel jar to avoid duplicate mod IDs.
 
 HTTP sends passwords and session cookies without transport encryption; use this opt-in only on a trusted network. Host validation, exact-origin checks, CSRF protection, login requirements, and role restrictions remain enabled. Public access should use the HTTPS proxy setup above.
 

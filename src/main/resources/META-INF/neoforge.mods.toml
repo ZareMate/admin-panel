@@ -3,10 +3,10 @@ loaderVersion="[1,)"
 license="MIT"
 [[mods]]
 modId="admin_panel"
-version="1.2.3"
+version="2.0.0"
 displayName="Admin Panel"
 authors="ZareMate"
-description='''Authenticated web administration for Admin GUI and Punish.'''
+description='''Outbound WebSocket bridge to the standalone Admin Panel service.'''
 [[dependencies.admin_panel]]
 modId="neoforge"
 type="required"

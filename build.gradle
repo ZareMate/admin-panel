@@ -2,7 +2,7 @@ plugins {
     id 'java-library'
     id 'net.neoforged.gradle.userdev' version '7.1.38'
 }
-version = '1.2.3'
+version = '2.0.0'
 group = 'com.zaremate.admin_panel'
 base { archivesName = 'admin_panel' }
 java.toolchain.languageVersion = JavaLanguageVersion.of(21)
@@ -16,7 +16,7 @@ runs {
     server { argument '--nogui' }
 }
 configurations { runtimeClasspath.extendsFrom localRuntime }
-def adminGuiJar = providers.gradleProperty('adminGuiJar').getOrElse('../admin-gui/build/libs/admin_gui-1.1.0.jar')
+def adminGuiJar = providers.gradleProperty('adminGuiJar').getOrElse('../admin-gui/build/libs/admin_gui-2.0.0.jar')
 def punishJar = providers.gradleProperty('punishJar').getOrElse('../punish/build/libs/punish-1.0.0.jar')
 dependencies {
     implementation 'net.neoforged:neoforge:21.1.249'
@@ -90,3 +90,41 @@ tasks.register('rankConfigEditorTest', JavaExec) {
     jvmArgs '-ea'
 }
 tasks.named('check') { dependsOn 'rankConfigEditorTest' }
+
+// Standalone React/TypeScript web app; no Java web-service JAR is produced.
+tasks.named('jar') { exclude 'web/**', 'icons/**' }
+tasks.register('webInstall', Exec) {
+    workingDir 'web-server'
+    commandLine 'npm', 'ci'
+    inputs.files('web-server/package.json', 'web-server/package-lock.json')
+    outputs.dir('web-server/node_modules')
+}
+tasks.register('webBuild', Exec) {
+    dependsOn 'webInstall'
+    workingDir 'web-server'
+    commandLine 'npm', 'run', 'build'
+    inputs.files(fileTree('web-server') { exclude 'node_modules/**', 'dist/**', 'data/**', 'public/**', '.env' })
+    inputs.files(fileTree('src/main/resources/icons'), fileTree('src/resources/icons'))
+    outputs.dirs('web-server/dist', 'web-server/public/icons')
+}
+tasks.register('webTest', Exec) {
+    dependsOn 'webBuild', testClasses
+    workingDir 'web-server'
+    commandLine 'npm', 'test'
+    doFirst { environment 'JAVA_BRIDGE_CLASSPATH', sourceSets.test.runtimeClasspath.asPath }
+}
+tasks.register('webTypecheck', Exec) {
+    dependsOn 'webInstall'
+    workingDir 'web-server'
+    commandLine 'npm', 'run', 'typecheck'
+}
+tasks.register('webDist', Zip) {
+    dependsOn 'webBuild'
+    archiveFileName = "admin_panel-${project.version}-web.zip"
+    destinationDirectory = layout.buildDirectory.dir('distributions')
+    from('web-server') {
+        include 'dist/**', 'public/icons/**', 'scripts/setup.mjs', 'package.json', 'package-lock.json', '.env.example', 'admin-panel.example.properties', 'README.md'
+    }
+}
+tasks.named('assemble') { dependsOn 'webDist' }
+tasks.named('check') { dependsOn 'webTest', 'webTypecheck' }

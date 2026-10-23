@@ -13,8 +13,6 @@ import java.util.concurrent.*;
 
 final class MinecraftBackend implements Backend {
     private final MinecraftServer server;
-    private final ItemIcons icons = new ItemIcons(ModAssets::read);
-    public JsonObject icons(JsonArray ids) { return icons.batch(ids); }
     MinecraftBackend(MinecraftServer server) { this.server = server; }
     private <T> T onServer(Callable<T> work) throws Exception {
         FutureTask<T> task = new FutureTask<>(work);

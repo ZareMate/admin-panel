@@ -1,0 +1,12 @@
+.git
+.gradle
+build
+run
+**/node_modules
+web-server/dist
+web-server/data
+web-server/public
+**/.env
+**/.env.*
+!**/.env.example
+config

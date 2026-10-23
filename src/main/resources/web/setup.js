@@ -25,7 +25,7 @@ $('setup').onsubmit=async e=>{
       guildId:$('guild').value,clientId:$('client').value,clientSecret:$('secret').value,ranks};
     const response=await fetch('/api/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     const result=await response.json();if(!response.ok)throw Error(result.error||'Setup failed');
-    $('message').textContent='Configuration saved. Restart the Minecraft server to start the Admin Panel. Close this setup tab.';
+    $('message').textContent='Configuration saved. Restart the standalone web service to start the Admin Panel. Close this setup tab.';
     $('secret').value='';$('token').value='';
   }catch(error){$('message').textContent=error.message;$('save').disabled=false;}
 };

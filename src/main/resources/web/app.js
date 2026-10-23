@@ -274,9 +274,9 @@ $('#access-ranks').addEventListener('click',e=>{
 $('#access-add').addEventListener('click',()=>{if(accessRows.length>=30)return;accessRows.push({name:'',discordRoleId:'',access:'viewer'});renderAccess();});
 $('#access-save').addEventListener('click',async()=>{
   if(!canManageAccess())return;
-  if(!confirm('Save rank changes? The Minecraft server must restart before permissions change.'))return;
+  if(!confirm('Save rank changes? The standalone web service must restart before permissions change.'))return;
   $('#access-save').disabled=true;
-  try {await api('/access/ranks',{ranks:accessRows});$('#access-message').textContent='Saved. Restart Minecraft to apply the new rank permissions.';toast('Rank configuration saved');}
+  try {await api('/access/ranks',{ranks:accessRows});$('#access-message').textContent='Saved. Restart the standalone web service to apply the new rank permissions.';toast('Rank configuration saved');}
   catch(e){$('#access-message').textContent=e.message;}
   finally{$('#access-save').disabled=false;}
 });

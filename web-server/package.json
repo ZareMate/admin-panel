@@ -1,0 +1,36 @@
+{
+  "name": "admin-panel-web",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "dev": "node --env-file-if-exists=.env --import tsx --watch src/main.ts",
+    "build": "node scripts/prepare-assets.mjs && tsc -p tsconfig.server.json && vite build",
+    "start": "node --env-file-if-exists=.env dist/server/main.js",
+    "test": "tsx --test test/*.test.ts",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.server.json --noEmit",
+    "setup": "node scripts/setup.mjs"
+  },
+  "dependencies": {
+    "fastify": "^5.8.0",
+    "@fastify/cookie": "^11.0.2",
+    "@fastify/websocket": "^11.2.0",
+    "ws": "^8.18.3",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "sharp": "^0.35.5",
+    "fflate": "^0.8.2"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "tsx": "^4.20.6",
+    "vite": "^7.2.2",
+    "@types/node": "^24.10.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@types/ws": "^8.18.1"
+  }
+}
