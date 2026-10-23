@@ -5,10 +5,12 @@ import java.net.http.*;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.logging.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** Outbound connection only. Requests are never replayed after reconnect. */
 final class BridgeClient implements AutoCloseable {
+    private static final Logger LOG = LoggerFactory.getLogger("admin_panel");
     private final BridgeConfig config;
     private final Backend backend;
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
@@ -32,13 +34,19 @@ final class BridgeClient implements AutoCloseable {
     }
     private void connect() {
         if (closed) return;
+        LOG.info("Connecting panel bridge to {}", config.url());
         http.newWebSocketBuilder().connectTimeout(Duration.ofSeconds(10))
             .header("Authorization", "Bearer " + config.token()).buildAsync(config.url(), new Listener())
-            .whenComplete((ws, error) -> { if (error != null) retry(); });
+            .whenComplete((ws, error) -> {
+                if (error != null) {
+                    LOG.warn("Panel bridge connection to {} failed: {}", config.url(), error.toString());
+                    retry();
+                }
+            });
     }
     private void retry() {
         if (!closed) {
-            Logger.getLogger("admin_panel").info("Panel bridge disconnected; retrying in 5 seconds");
+            LOG.info("Panel bridge disconnected; retrying in 5 seconds");
             try { reconnect.schedule(this::connect, 5, TimeUnit.SECONDS); } catch (RejectedExecutionException ignored) {}
         }
     }
@@ -49,7 +57,7 @@ final class BridgeClient implements AutoCloseable {
             if (closed) { ws.abort(); return; }
             listener = this; socket = ws;
             worker.execute(watches::clear); ws.request(1);
-            Logger.getLogger("admin_panel").info("Panel bridge connected");
+            LOG.info("Panel bridge connected to {}", config.url());
         }
         public CompletionStage<?> onText(WebSocket ws, CharSequence data, boolean last) {
             if (text.length() + data.length() > 65536) { ws.abort(); end(ws); return null; }
@@ -61,8 +69,14 @@ final class BridgeClient implements AutoCloseable {
             }
             ws.request(1); return null;
         }
-        public CompletionStage<?> onClose(WebSocket ws, int status, String reason) { end(ws); return null; }
-        public void onError(WebSocket ws, Throwable error) { end(ws); }
+        public CompletionStage<?> onClose(WebSocket ws, int status, String reason) {
+            LOG.warn("Panel bridge closed (code {}, reason: {})", status, reason);
+            end(ws); return null;
+        }
+        public void onError(WebSocket ws, Throwable error) {
+            LOG.warn("Panel bridge WebSocket error: {}", error.toString());
+            end(ws);
+        }
         private synchronized void end(WebSocket ws) {
             if (ended) return; ended = true;
             if (socket == ws) socket = null;
