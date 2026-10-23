@@ -2,6 +2,7 @@ import { pbkdf2 } from 'node:crypto';
 import { promisify } from 'node:util';
 import { Failure, type User, token, equal, discordUuid, text, object } from './common.js';
 import { type Config, snowflake } from './config.js';
+import { has } from './permissions.js';
 const hash = promisify(pbkdf2);
 export interface Session { user:User; csrf:string; expires:number }
 export class Auth {
@@ -24,13 +25,13 @@ export class Auth {
       const user=this.config.users.get(name), encoded=user?.hash || '0'.repeat(32)+':'+ '0'.repeat(64);
       const [salt,expected]=encoded.split(':');
       const actual=await hash(password,Buffer.from(salt!,'hex'),600_000,32,'sha256');
-      return equal(actual.toString('hex'),expected!) ? user : undefined;
+      return equal(actual.toString('hex'),expected!) && has(user,'panel.access') ? user : undefined;
     } finally { this.hashing--; }
   }
   create(user:User,expires=Date.now()+8*3600_000) {
     for(const [key,value] of this.sessions) if(value.expires<=Date.now()) this.sessions.delete(key);
     if(this.sessions.size>=1024) throw new Failure(503,'Session capacity reached');
-    const id=token(); this.sessions.set(id,{user,csrf:token(),expires:Math.min(expires,Date.now()+8*3600_000)}); return id;
+    const id=token(); this.sessions.set(id,{user:{...user,permissions:[...(user.permissions||[])]},csrf:token(),expires:Math.min(expires,Date.now()+8*3600_000)}); return id;
   }
   get(id:string) { const s=this.sessions.get(id); if(s && s.expires<=Date.now()) {this.sessions.delete(id);return undefined;} return s; }
   logout(id:string) {this.sessions.delete(id);}
@@ -71,8 +72,8 @@ export class Auth {
     const member=await this.discord(`/api/v10/users/@me/guilds/${this.config.guildId}/member`,{headers});
     if(member.pending===true || !Array.isArray(member.roles) || (member.user && object(member.user).id!==id)) throw new Failure(403,'Discord membership could not be verified');
     const rank=this.config.ranks.find(r=>(member.roles as unknown[]).includes(r.discordRoleId));
-    if(!rank || rank.access==='deny') throw new Failure(403,'Your Discord roles do not grant panel access');
-    const user:User={name:`${username} [${id}]`,role:rank.access,rank:rank.name,uuid:this.config.mappings.get(id)||discordUuid(id)};
+    if(!rank || !has(rank,'panel.access')) throw new Failure(403,'Your Discord roles do not grant panel access');
+    const user:User={name:`${username} [${id}]`,role:rank.access==='deny'?'viewer':rank.access,permissions:[...rank.permissions],rank:rank.name,uuid:this.config.mappings.get(id)||discordUuid(id)};
     // Authorization snapshot at login; tokens are discarded after the exchange.
     return {user,expires:Date.now()+Math.min(seconds,28800)*1000};
   }

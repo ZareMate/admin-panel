@@ -7,9 +7,12 @@ import { type Config, saveRanks } from './config.js';
 import { Auth, type Session } from './auth.js';
 import { Audit } from './audit.js';
 import { Bridge } from './bridge.js';
+import { Live } from './live.js';
 import { Images, validItem } from './images.js';
-import { Failure, equal, object, text, uuid, canModerate } from './common.js';
+import { Failure, equal, object, text, uuid } from './common.js';
 
+import { has, mutationPermission, filterDetail, filterPlayers } from './permissions.js';
+const requirePermission=(user:{permissions?:string[]},p:string)=>{if(!has(user,p))throw new Failure(403,'Permission required: '+p);};
 declare module 'fastify' { interface FastifyRequest { panelSession?:Session } }
 export async function createApp(config:Config, options:{bridge?:Bridge;fetcher?:typeof fetch;publicDir?:string;bundledDir?:string;logger?:boolean}={}) {
   const app=Fastify({bodyLimit:16_384,trustProxy:config.trustedProxies.length?config.trustedProxies:false,
@@ -20,8 +23,9 @@ export async function createApp(config:Config, options:{bridge?:Bridge;fetcher?:
   const images=new Images(resolve(config.dataDir,'assets'),options.bundledDir||resolve('public'),options.fetcher);await images.init();
   const requests=new Map<string,number>();let savingRanks=false,iconJobs=0;
   await app.register(cookie);
-  await app.register(websocket,{options:{maxPayload:8*1024*1024,perMessageDeflate:false}});
-  app.addHook('preClose',async()=>{bridge.close();});
+  await app.register(websocket,{options:{maxPayload:65536,perMessageDeflate:false}});
+  const live=new Live(bridge,auth);
+  app.addHook('preClose',async()=>{live.close();bridge.close();});
   const sessionCookie={path:'/',httpOnly:true,sameSite:'strict' as const,secure:config.secure,maxAge:28800};
   const oauthCookie={path:'/api/auth/discord',httpOnly:true,sameSite:'lax' as const,secure:config.secure,maxAge:300};
   const publicRoutes=new Set(['/api/login','/api/auth/method','/api/auth/discord/start','/api/auth/discord/callback']);
@@ -36,6 +40,7 @@ export async function createApp(config:Config, options:{bridge?:Bridge;fetcher?:
       if(req.headers['content-type']?.split(';')[0]?.toLowerCase()!=='application/json')throw new Failure(415,'JSON required');
     }
     const path=req.url.split('?')[0]!;
+    if(path==='/api/live' && req.headers.origin!==config.origin)throw new Failure(403,'Origin rejected');
     if(path==='/bridge') {
       if(!equal(String(req.headers.authorization||''),'Bearer '+config.bridgeToken))throw new Failure(401,'Bridge authentication rejected');
       return;
@@ -53,6 +58,7 @@ export async function createApp(config:Config, options:{bridge?:Bridge;fetcher?:
     reply.code(status).send({error:status===500?'Request failed. Check player history and audit before retrying.':err.message});
   });
   app.get('/bridge',{websocket:true},socket=>bridge.attach(socket));
+  app.get('/api/live',{websocket:true},(socket,req)=>live.attach(socket,req.cookies.panel_session||''));
   app.get('/api/auth/method',async()=>({mode:config.mode}));
   app.post('/api/login',async(req,reply)=>{
     if(config.mode!=='local')throw new Failure(403,'Password login is disabled. Sign in with Discord.');
@@ -72,15 +78,15 @@ export async function createApp(config:Config, options:{bridge?:Bridge;fetcher?:
       reply.setCookie('panel_session',auth.create(login.user,login.expires),sessionCookie).clearCookie('panel_oauth',oauthCookie);return reply.redirect('/');
     }catch(error){reply.clearCookie('panel_oauth',oauthCookie);return reply.redirect('/?loginError='+encodeURIComponent(error instanceof Failure?error.message:'Discord sign-in failed. Try again.'));}
   });
-  app.get('/api/session',async req=>{const s=req.panelSession!;return {name:s.user.name,role:s.user.role,rank:s.user.rank,csrf:s.csrf};});
-  app.post('/api/logout',async(req,reply)=>{auth.logout(req.cookies.panel_session||'');reply.clearCookie('panel_session',sessionCookie);return {};});
-  app.get('/api/players',async()=>bridge.players());
-  app.get<{Params:{id:string}}>('/api/players/:id',async req=>bridge.player(uuid(req.params.id),req.panelSession!.user));
+  app.get('/api/session',async req=>{const s=req.panelSession!;return {name:s.user.name,role:s.user.role,rank:s.user.rank,permissions:s.user.permissions||[],csrf:s.csrf};});
+  app.post('/api/logout',async(req,reply)=>{auth.logout(req.cookies.panel_session||'');live.revoke(req.cookies.panel_session||'');reply.clearCookie('panel_session',sessionCookie);return {};});
+  app.get('/api/players',async req=>{requirePermission(req.panelSession!.user,'tab.players');return filterPlayers(await bridge.players(),req.panelSession!.user);});
+  app.get<{Params:{id:string}}>('/api/players/:id',async req=>{const user=req.panelSession!.user;requirePermission(user,'tab.players');return filterDetail(await bridge.player(uuid(req.params.id),user),user);});
   app.post<{Params:{id:string;action:string}}>('/api/players/:id/:action',async req=>{
     const id=uuid(req.params.id),{action}=req.params,{user,expires}=req.panelSession!,body=object(req.body);
-    if(!['punish','revoke','note-add','note-edit','note-remove'].includes(action))throw new Failure(404,'Not found');
-    if(!canModerate(user))throw new Failure(403,'Moderator role required');
-    if((action==='revoke'||action==='punish'&&!['WARN','KICK','MUTE'].includes(String(body.type)))&&user.role!=='admin')throw new Failure(403,'Administrator role required');
+    if(!['punish','revoke','remove-punishment','note-add','note-edit','note-remove'].includes(action))throw new Failure(404,'Not found');
+    requirePermission(user,'tab.players');requirePermission(user,action.startsWith('note-')?'tab.notes':'tab.cases');
+    requirePermission(user,mutationPermission(action,body));
     const requestId=req.headers['x-request-id'];if(typeof requestId!=='string'||! /^[a-zA-Z0-9-]{16,80}$/.test(requestId))throw new Failure(400,'Request ID required');
     for(const [key,expiry] of requests)if(expiry<=Date.now())requests.delete(key);
     const key=req.cookies.panel_session+':'+requestId;
@@ -90,18 +96,20 @@ export async function createApp(config:Config, options:{bridge?:Bridge;fetcher?:
     try {const result=await bridge.mutate(id,user,action,body);await audit.write(user.name,action,id,'success',result);return result;}
     catch(error){await audit.write(user.name,action,id,'failed-or-unconfirmed',{requestId,error:error instanceof Error?error.message:'Unknown outcome'});throw error;}
   });
-  app.get('/api/audit',async req=>{if(req.panelSession!.user.role!=='admin')throw new Failure(403,'Administrator role required');return audit.recent();});
-  const manager=(req:FastifyRequest)=>{const user=req.panelSession!.user;if(config.mode!=='discord'||user.role!=='admin'||!['dev','owner'].includes(user.rank))throw new Failure(403,'Owner or developer rank required');};
+  app.get('/api/audit',async req=>{requirePermission(req.panelSession!.user,'tab.audit');return audit.recent();});
+  const manager=(req:FastifyRequest)=>{const user=req.panelSession!.user;if(config.mode!=='discord'||!has(user,'access.manage'))throw new Failure(403,'Discord rank management requires access.manage');};
   app.get('/api/access/ranks',async req=>{manager(req);return {ranks:config.ranks};});
   app.post('/api/access/ranks',async req=>{
     manager(req);if(savingRanks)throw new Failure(409,'Rank configuration is being saved');savingRanks=true;
     try {await saveRanks(config,object(req.body).ranks);await audit.write(req.panelSession!.user.name,'access-ranks-update','','success',{});return {restartRequired:true};}finally{savingRanks=false;}
   });
   app.post('/api/icons',async req=>{
+    if(!['inventory','enderChest','curios'].some(k=>has(req.panelSession!.user,'tab.'+k)))throw new Failure(403,'Storage permission required');
     const ids=object(req.body).ids;if(!Array.isArray(ids)||ids.length>128||!ids.every(validItem))throw new Failure(400,'Expected at most 128 valid item IDs');
     if(iconJobs>=2)throw new Failure(503,'Icon service busy');iconJobs++;try{return await images.icons(ids as string[]);}finally{iconJobs--;}
   });
   app.get<{Params:{kind:string;name:string}}>('/api/skin/:kind/:name',async(req,reply)=>{
+    requirePermission(req.panelSession!.user,'tab.players');
     const bytes=await images.skin(req.params.kind,req.params.name);return reply.header('Cache-Control','private, max-age=21600').type('image/png').send(bytes);
   });
   const publicDir=options.publicDir||resolve('dist/client');

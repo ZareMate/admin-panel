@@ -7,7 +7,11 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 final class Auth {
-    record User(String name, String role, UUID uuid, String hash, String rank) {
+    record User(String name, String role, UUID uuid, String hash, String rank, Set<String> permissions) {
+        User { permissions = Set.copyOf(permissions); }
+        User(String name, String role, UUID uuid, String hash, String rank) { this(name, role, uuid, hash, rank, Permissions.legacy(role, rank)); }
+        boolean has(String permission) { return permissions.contains(permission); }
+        void require(String permission) { if (!has(permission)) throw new PanelServer.Failure(403, "Permission required: " + permission); }
         User(String name, String role, UUID uuid, String hash) { this(name, role, uuid, hash, role); }
         boolean canModerate() { return role.equals("admin") || role.equals("moderator"); }
         boolean isAdmin() { return role.equals("admin"); }

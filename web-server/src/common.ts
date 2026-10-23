@@ -3,7 +3,7 @@ export class Failure extends Error {
   constructor(public statusCode: number, message: string) { super(message); }
 }
 export type Role = 'viewer' | 'moderator' | 'admin';
-export interface User { name: string; role: Role; rank: string; uuid: string; hash?: string }
+export interface User { name: string; role: Role; rank: string; uuid: string; hash?: string; permissions?: string[] }
 export const token = () => randomBytes(32).toString('base64url');
 export function equal(a: string, b: string) {
   const x = Buffer.from(a), y = Buffer.from(b);
@@ -27,4 +27,3 @@ export function discordUuid(id: string) {
   bytes[6] = (bytes[6]! & 0x0f) | 0x30; bytes[8] = (bytes[8]! & 0x3f) | 0x80;
   const h = bytes.toString('hex'); return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`;
 }
-export const canModerate = (user: User) => user.role === 'admin' || user.role === 'moderator';

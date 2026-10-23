@@ -1,7 +1,12 @@
 import { readFile, mkdir, writeFile, rename, unlink } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { Failure, type User, type Role, text, uuid, token } from './common.js';
-export interface Rank { name: string; discordRoleId: string; access: Role | 'deny' }
+import { PERMISSIONS, legacyPermissions } from './permissions.js';
+export function permissions(value:unknown):string[] {
+ if(!Array.isArray(value)||!value.every(p=>typeof p==='string'&&(PERMISSIONS as readonly string[]).includes(p)))throw new Failure(400,'Unknown permission');
+ return [...new Set(value)] as string[];
+}
+export interface Rank { name: string; discordRoleId: string; access: Role | 'deny'; permissions:string[] }
 export interface Config {
   origin: string; bind: string; port: number; secure: boolean; bridgeToken: string;
   mode: 'local' | 'discord'; users: Map<string, User>; ranks: Rank[];
@@ -35,10 +40,11 @@ export function validateRanks(value: unknown, requireManager = true): Rank[] {
   const ranks = value.map(row => {
     if (!row || typeof row !== 'object') throw new Failure(400, 'Invalid rank');
     const name = text(row.name,32), id = snowflake(row.discordRoleId), access = row.access;
-    if (!/^[a-z][a-z0-9-]{0,31}$/.test(name) || names.has(name) || ids.has(id) || !['admin','moderator','viewer','deny'].includes(access)) throw new Failure(400, 'Invalid or duplicate rank');
-    names.add(name); ids.add(id); return {name, discordRoleId:id, access} as Rank;
+    if (!/^[a-z][a-z0-9-]{0,31}$/.test(name) || names.has(name) || ids.has(id)) throw new Failure(400, 'Invalid or duplicate rank');
+    names.add(name); ids.add(id); if(row.permissions===undefined&&!['admin','moderator','viewer','deny'].includes(access))throw new Failure(400,'Permissions required');
+    return {name, discordRoleId:id, access:['admin','moderator','viewer','deny'].includes(access)?access:'viewer', permissions:permissions(row.permissions===undefined?legacyPermissions(access,name):row.permissions)} as Rank;
   });
-  if (requireManager && !ranks.some(r => ['owner','dev'].includes(r.name) && r.access === 'admin')) throw new Failure(400, 'Keep an owner or dev rank with admin access');
+  if (requireManager && !ranks.some(r => r.permissions.includes('panel.access') && r.permissions.includes('access.manage'))) throw new Failure(400, 'Keep a rank with panel.access and access.manage');
   return ranks;
 }
 export async function loadConfig(env = process.env): Promise<Config> {
@@ -59,8 +65,8 @@ export async function loadConfig(env = process.env): Promise<Config> {
   for (const [key,value] of props) {
     if (key.startsWith('user.') && mode === 'local') {
       const name = key.slice(5), [role,id,hash,...extra] = value.split(',');
-      if (!/^[a-zA-Z0-9_-]{3,32}$/.test(name) || !['viewer','moderator','admin'].includes(role!) || !/^[0-9a-f]{32}:[0-9a-f]{64}$/.test(hash!) || extra.length) throw new Error('Invalid staff account: ' + name);
-      users.set(name,{name,role:role as Role,rank:role!,uuid:uuid(id),hash});
+      if (!/^[a-zA-Z0-9_-]{3,32}$/.test(name) || (!/^[a-z][a-z0-9-]{0,31}$/.test(role!) || (!['viewer','moderator','admin'].includes(role!)&&!props.has('permissions.'+name))) || !/^[0-9a-f]{32}:[0-9a-f]{64}$/.test(hash!) || extra.length) throw new Error('Invalid staff account: ' + name);
+      users.set(name,{name,role:(['viewer','moderator','admin'].includes(role!)?role:'viewer') as Role,rank:role!,uuid:uuid(id),hash,permissions:props.has('permissions.'+name)?permissions(props.get('permissions.'+name)!.split(',').map(s=>s.trim()).filter(Boolean)):legacyPermissions(role!)});
     }
     if (key.startsWith('discord.minecraft.')) mappings.set(snowflake(key.slice(18)),uuid(value.trim()));
   }
@@ -68,7 +74,7 @@ export async function loadConfig(env = process.env): Promise<Config> {
   let ranks: Rank[] = [];
   if (mode === 'discord') {
     snowflake(clientId); snowflake(guildId); if (!clientSecret) throw new Error('Discord client secret required');
-    ranks = validateRanks((props.get('discord.rank-order') || '').split(',').map(name => ({name:name.trim(),discordRoleId:props.get(`discord.rank.${name.trim()}.role-id`),access:props.get(`discord.rank.${name.trim()}.access`)})),false);
+    ranks = validateRanks((props.get('discord.rank-order') || '').split(',').map(name => ({name:name.trim(),discordRoleId:props.get(`discord.rank.${name.trim()}.role-id`),access:props.get(`discord.rank.${name.trim()}.access`),permissions:props.has(`discord.rank.${name.trim()}.permissions`)?props.get(`discord.rank.${name.trim()}.permissions`)!.split(',').map(s=>s.trim()).filter(Boolean):undefined})),false);
   } else if (!users.size) throw new Error('At least one local staff account is required');
   return {origin,bind:env.HOST || props.get('bind') || '0.0.0.0',port,secure:url.protocol==='https:',bridgeToken,mode,users,ranks,clientId,clientSecret,guildId,mappings,path,dataDir,props,
     trustedProxies:(env.TRUSTED_PROXIES || '').split(',').map(s=>s.trim()).filter(Boolean)};
@@ -78,7 +84,7 @@ export async function saveRanks(config: Config, value: unknown) {
   if (props.get('auth.mode') !== 'discord') throw new Failure(400,'Discord authentication required');
   for (const key of props.keys()) if (key.startsWith('discord.rank.')) props.delete(key);
   props.set('discord.rank-order',ranks.map(r=>r.name).join(','));
-  for (const rank of ranks) { props.set(`discord.rank.${rank.name}.role-id`,rank.discordRoleId); props.set(`discord.rank.${rank.name}.access`,rank.access); }
+  for (const rank of ranks) { props.set(`discord.rank.${rank.name}.role-id`,rank.discordRoleId); props.set(`discord.rank.${rank.name}.permissions`,rank.permissions.join(',')); }
   const escape = (s:string) => s.replace(/[\\\n\r\t=:#! ]/g,ch=>({'\n':'\\n','\r':'\\r','\t':'\\t'}[ch] ?? '\\'+ch));
   await mkdir(dirname(config.path),{recursive:true}); const temporary = `${config.path}.${token()}.tmp`;
   try { await writeFile(temporary,[...props].map(([k,v])=>`${escape(k)}=${escape(v)}`).join('\n')+'\n',{mode:0o600}); await rename(temporary,config.path); }

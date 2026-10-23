@@ -79,7 +79,7 @@ final class MinecraftBackend implements Backend {
             playtime.addProperty("available", false);
         }
         result.add("playtime", playtime);
-        return result;
+        return Permissions.detail(result, viewer);
     }); }
     private JsonObject location(UUID id) {
         JsonObject out = new JsonObject();
@@ -124,9 +124,9 @@ final class MinecraftBackend implements Backend {
     }
     public JsonElement mutate(UUID id, Auth.User actor, String action, JsonObject b) throws Exception {
         return onServer(() -> {
-            if (!actor.canModerate()) throw new PanelServer.Failure(403, "Moderator role required");
+            Permissions.mutation(actor, action, b);
             JsonObject player = detail(id, actor);
-            if (action.equals("punish") || action.equals("revoke")) {
+            if (action.equals("punish") || action.equals("revoke") || action.equals("remove-punishment")) {
                 if (player.get("name").getAsString().equals(id.toString())) throw new IllegalArgumentException("Unknown player: choose a known server profile");
                 if (!ModList.get().isLoaded("punish")) throw new PanelServer.Failure(409, "Punish mod is not installed");
                 return PunishBridge.mutate(server, id, player.get("name").getAsString(), actor, action, b);

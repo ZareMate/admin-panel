@@ -2,13 +2,17 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Api, Session, Detail, Case, Slot } from './types';
 import { Avatar, date, Info, Pairs } from './App';
 import { durationMinutes } from './duration';
-export interface Action {action:string;noteId?:string;caseId?:string;requestId:string}
+import { has } from '../src/permissions';
+const tabs=[['overview','Overview'],['cases','Punishments'],['notes','Staff notes'],['security','Security'],['inventory','Inventory'],['enderChest','Ender Chest'],['curios','Curios']];
+export interface Action {action:string;noteId?:string;caseId?:string;recordId?:number;requestId:string}
 const makeAction=(action:string,fields:Partial<Action>={}):Action=>({action,...fields,requestId:Array.from(crypto.getRandomValues(new Uint8Array(32)),b=>b.toString(16).padStart(2,'0')).join('')});
 const status=(c:Case)=>c.removedBy?'removed':c.until&&c.until<=Date.now()?'expired':!c.active?c.replaced?'replaced':'inactive':['warn','kick'].includes(c.type)?'recorded':'current';
 const time=(seconds:number)=>{const m=Math.floor(Math.max(0,seconds)/60);return `${Math.floor(m/1440)}d ${Math.floor(m%1440/60)}h ${m%60}m`;};
 function Skin({name}:{name:string}){const [failed,setFailed]=useState(false);return failed||!/^[A-Za-z0-9_]{3,16}$/.test(name)?<p>Skin unavailable</p>:<img className="full-skin" src={'/api/skin/body/'+encodeURIComponent(name)} alt={`${name}'s Minecraft skin`} loading="lazy" onError={()=>setFailed(true)}/>;}
 export function PlayerDetail({player:p,session,api,action,setAction,changed}:{player:Detail;session:Session;api:Api;action:Action|null;setAction:(a:Action|null)=>void;changed:()=>Promise<void>}) {
-  const [tab,setTab]=useState('overview');const admin=session.role==='admin',moderate=admin||session.role==='moderator';
+  const allowed=tabs.filter(([key])=>has(session,'tab.'+key));
+  const [selectedTab,setTab]=useState(allowed[0]?.[0]||'none');const tab=allowed.some(([key])=>key===selectedTab)?selectedTab:allowed[0]?.[0]||'none';
+  const moderate=has(session,'tab.cases')&&['warn','kick','mute','ban','offense'].some(type=>has(session,'punish.'+type));
   const open=(name:string,fields:Partial<Action>={})=>setAction(makeAction(name,fields));
   let content:ReactNode;
   if(tab==='overview')content=<div className="info-grid">
@@ -17,22 +21,26 @@ export function PlayerDetail({player:p,session,api,action,setAction,changed}:{pl
       ['Status',p.location?.available?(p.location.source==='live'?'Current location':'Last saved location'):'Unavailable'],
       ...(p.location?.available?[['Dimension',p.location.dimension],['X',Number(p.location.x).toFixed(1)],['Y',Number(p.location.y).toFixed(1)],['Z',Number(p.location.z).toFixed(1)],['Saved',date(p.location.savedAt)]] as [string,ReactNode][]:[])]}/></Info>
     <Info title="Player skin"><Skin name={p.name}/></Info>
-    <Info title="Moderation summary"><Pairs rows={[
-      ['Current bans / mutes',(p.cases||[]).filter(c=>c.active&&(!c.until||c.until>Date.now())&&['ban','mute'].includes(c.type)).length],['Recorded punishments',p.cases?.length||0],['Staff notes',p.notes?.length||0],['Punish integration',p.punish?.available?'Available':'Unavailable']]}/></Info>
+    {(has(session,'tab.cases')||has(session,'tab.notes'))&&<Info title="Moderation summary"><Pairs rows={[
+      ...(has(session,'tab.cases')?[
+        ['Current bans / mutes',(p.cases||[]).filter(c=>c.active&&(!c.until||c.until>Date.now())&&['ban','mute'].includes(c.type)).length],
+        ['Recorded punishments',p.cases?.length||0],['Punish integration',p.punish?.available?'Available':'Unavailable']] as [string,ReactNode][]:[]),
+      ...(has(session,'tab.notes')?[['Staff notes',p.notes?.length||0]] as [string,ReactNode][]:[])]}/></Info>}
     <Info title="Discord identity">{p.discord?.available?<Pairs rows={[["Display name",p.discord.displayName],['Account',p.discord.discordTag],['Discord ID',p.discord.discordId],['Linked',date(p.discord.linkedAt)]]}/>:<p>No linked Discord account</p>}</Info>
     <Info title="FTB Team">{p.teams?.available?<><strong>{p.teams.name}</strong>{p.teams.members?.map((m,i)=><p key={i}>{m.name} <span className="pill">{m.rankDisplay||m.rank}</span></p>)}</>:<p>No team record available</p>}</Info>
     <Info title="ClockIn">{p.clockin?.available?<Pairs rows={[["Status",p.clockin.clockedIn?'Clocked in':'Clocked out'],['Total time',time(p.clockin.totalSeconds)]]}/>:<p>No record available</p>}</Info></div>;
-  else if(tab==='cases')content=!p.punish?.available?<p className="notice">Punish is unavailable. Install the compatible Punish mod.</p>:!p.cases?.length?<p className="empty">No punishment history</p>:p.cases.map((c,i)=><article key={i} className="record"><div className="record-top"><span className={'pill '+c.type}>{c.type.toUpperCase()}{c.ipBased?' · IP':''}</span><strong>#{c.id} {c.offense||'Direct action'}</strong><span className={'pill '+status(c)}>{status(c)}</span>{admin&&c.offense&&c.primary&&!c.removedBy&&<button className="secondary small" onClick={()=>open('revoke',{caseId:c.caseId})}>Remove case</button>}</div><p>{c.reason}</p><small>{c.by} · {date(c.at)}{['ban','mute'].includes(c.type)?' · Until '+(c.until?date(c.until):'permanent'):''}{c.removedBy?' · Removed by '+c.removedBy:''}</small></article>);
-  else if(tab==='notes')content=!p.notesAvailable?<p className="notice">Admin Notes is unavailable on this server.</p>:<>{moderate&&<button className="secondary" onClick={()=>open('note-add')}>＋ Add staff note</button>}{p.notes?.length?p.notes.map(n=><article className="record" key={n.id}><div className="record-top"><strong>{n.author}</strong>{n.system&&<span className="pill">System</span>}<small>{date(n.createdAt)}</small></div><p>{n.text}</p>{moderate&&n.canEdit&&<div className="record-actions"><button className="secondary small" onClick={()=>open('note-edit',{noteId:n.id})}>Edit</button><button className="danger small" onClick={()=>open('note-remove',{noteId:n.id})}>Remove</button></div>}</article>):<p className="empty">No staff notes</p>}</>;
+  else if(tab==='cases')content=!p.punish?.available?<p className="notice">Punish is unavailable. Install the compatible Punish mod.</p>:!p.cases?.length?<p className="empty">No punishment history</p>:p.cases.map((c,i)=><article key={i} className="record"><div className="record-top"><span className={'pill '+c.type}>{c.type.toUpperCase()}{c.ipBased?' · IP':''}</span><strong>#{c.id} {c.offense||'Direct action'}</strong><span className={'pill '+status(c)}>{status(c)}</span>{has(session,'punish.revoke')&&c.offense&&c.primary&&!c.removedBy&&<button className="secondary small" onClick={()=>open('revoke',{caseId:c.caseId})}>Remove case</button>}{has(session,'punish.remove')&&!c.offense&&!c.removedBy&&<button className="secondary small" onClick={()=>open('remove-punishment',{recordId:c.id})}>Remove punishment</button>}</div><p>{c.reason}</p><small>{c.by} · {date(c.at)}{['ban','mute'].includes(c.type)?' · Until '+(c.until?date(c.until):'permanent'):''}{c.removedBy?' · Removed by '+c.removedBy:''}</small></article>);
+  else if(tab==='notes')content=!p.notesAvailable?<p className="notice">Admin Notes is unavailable on this server.</p>:<>{has(session,'notes.add')&&<button className="secondary" onClick={()=>open('note-add')}>＋ Add staff note</button>}{p.notes?.length?p.notes.map(n=><article className="record" key={n.id}><div className="record-top"><strong>{n.author}</strong>{n.system&&<span className="pill">System</span>}<small>{date(n.createdAt)}</small></div><p>{n.text}</p>{n.canEdit&&<div className="record-actions">{has(session,'notes.edit')&&<button className="secondary small" onClick={()=>open('note-edit',{noteId:n.id})}>Edit</button>}{has(session,'notes.remove')&&<button className="danger small" onClick={()=>open('note-remove',{noteId:n.id})}>Remove</button>}</div>}</article>):<p className="empty">No staff notes</p>}</>;
   else if(tab==='security')content=<div className="info-grid">
     <Info title="TSA Anticheat">{p.tsa?.available?<Pairs rows={[["Packet checks",p.tsa.packetChecks],['Passed',p.tsa.packetPasses],['Modified',p.tsa.packetModified],['Timeouts',p.tsa.packetTimeout],['Last status',p.tsa.lastPacketStatus],['Last check',p.tsa.lastPacketDate]]}/>:<p>No record available</p>}</Info>
     <Info title="Airport Security">{p.ass?.available?<Pairs rows={[["Status",p.ass.status],['Total checks',p.ass.totalChecks],['Clean',p.ass.cleanChecks],['Detected',p.ass.detectedChecks],['Inconclusive',p.ass.inconclusiveChecks],['Cleared',p.ass.clearedDate]]}/>:<p>No record available</p>}</Info>
     <Info title="Stored TSA detections" wide>{p.tsa?.detections?.length?p.tsa.detections.map((d,i)=><p key={i}>{d}</p>):<p>No stored detections</p>}</Info>
     <Info title="Airport detection counts" wide><Pairs rows={Object.entries(p.ass?.detectionCounts||{})}/></Info>
     <Info title="Airport detection dates" wide><Pairs rows={Object.entries(p.ass?.detectionDates||{})}/></Info></div>;
+  else if(tab==='none')content=<p>No profile tabs are permitted for your rank.</p>;
   else content=<Storage key={tab} player={p} kind={tab as 'inventory'|'enderChest'|'curios'} api={api}/>;
   return <><div className="profile-head"><Avatar name={p.name}/><div><h2><span className={p.hasDetections||(p.tsa?.packetModified||0)>0||p.tsa?.detections?.length||(p.ass?.detectedChecks||0)>0?'detected-name':''}>{p.name}</span> <span className={'pill '+(p.online?'online':'')}>{p.online?'● Online':'Offline'}</span></h2><div className="uuid">{p.uuid}</div></div>{moderate&&<div className="profile-actions"><button className="primary" disabled={!p.punish?.available} onClick={()=>open('punish')}>＋ Issue punishment</button></div>}</div>
-    <div className="detail-tabs">{[['overview','Overview'],['cases','Punishments'],['notes','Staff notes'],['security','Security'],['inventory','Inventory'],['enderChest','Ender Chest'],['curios','Curios']].map(([key,title])=><button key={key} data-tab={key} className={tab===key?'active':''} onClick={()=>setTab(key!)}>{title}</button>)}</div><div className="detail-body">{content}</div>
+    <div className="detail-tabs">{allowed.map(([key,title])=><button key={key} data-tab={key} className={tab===key?'active':''} onClick={()=>setTab(key!)}>{title}</button>)}</div><div className="detail-body">{content}</div>
     {action&&<ActionDialog key={action.requestId} player={p} session={session} action={action} api={api} close={()=>setAction(null)} changed={changed}/>}</>;
 }
 function Storage({player,kind,api}:{player:Detail;kind:'inventory'|'enderChest'|'curios';api:Api}) {
@@ -49,25 +57,25 @@ function Item({slot:s,icon}:{slot:Slot;icon?:string}) {
   return <details className={'item-slot '+(s.selected?'held-item':'')}><summary title={s.name+' · '+s.id}><small>{s.label}{s.selected?' · Selected':''}</small><span className="item-art">{icon&&/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(icon)?<img src={icon} alt=""/>:'◇'}</span><strong>{s.name}</strong><span className="item-count">×{s.count}</span></summary><div className="item-properties"><code>{s.id}</code>{s.maxDamage>0&&<p>Durability: {Math.max(0,s.maxDamage-s.damage)} / {s.maxDamage}</p>}{s.enchantments?.map((e,i)=><p className="enchantment" key={i}>{e}</p>)}{s.lore?.map((l,i)=><p key={i}>{l}</p>)}</div></details>;
 }
 function ActionDialog({player,session,action,api,close,changed}:{player:Detail;session:Session;action:Action;api:Api;close:()=>void;changed:()=>Promise<void>}) {
-  const dialog=useRef<HTMLDialogElement>(null),admin=session.role==='admin',punish=action.action==='punish',note=action.action.startsWith('note-'),removing=action.action==='note-remove';
+  const dialog=useRef<HTMLDialogElement>(null),punish=action.action==='punish',note=action.action.startsWith('note-'),removing=action.action==='note-remove';
   const offenses=player.punish?.offenses||[];
-  const [type,setType]=useState(admin&&offenses.length?'OFFENSE':'WARN'),[offense,setOffense]=useState(offenses[0]?.id||'');
+  const [type,setType]=useState((['OFFENSE','WARN','KICK','MUTE','BAN'].find(t=>has(session,'punish.'+t.toLowerCase())&&(t!=='OFFENSE'||offenses.length))||'WARN')),[offense,setOffense]=useState(offenses[0]?.id||'');
   const [error,setError]=useState(''),[busy,setBusy]=useState(false),[submitted,setSubmitted]=useState(false);
   useEffect(()=>{dialog.current?.showModal();},[]);
-  const title=({'punish':'Issue punishment','note-add':'Add staff note','note-edit':'Edit staff note','note-remove':'Remove staff note','revoke':'Remove offense case'} as Record<string,string>)[action.action];
+  const title=({'punish':'Issue punishment','note-add':'Add staff note','note-edit':'Edit staff note','note-remove':'Remove staff note','revoke':'Remove offense case','remove-punishment':'Remove punishment'} as Record<string,string>)[action.action];
   return <dialog id="action-dialog" ref={dialog} onCancel={e=>{if(busy)e.preventDefault();else close();}}><form id="action-form" onSubmit={async e=>{
     e.preventDefault();if(submitted||busy)return;const values=new FormData(e.currentTarget);const body:Record<string,unknown>={};
     try {
     if(punish){body.type=type;body.reason=values.get('reason');body.silent=values.get('silent')==='on';if(type==='OFFENSE')body.offense=offense;body.durationMinutes=['BAN','MUTE'].includes(type)?durationMinutes(values.get('duration')):0;}
     else if(note){if(action.noteId)body.noteId=action.noteId;if(!removing)body.text=values.get('text');}
-    else {body.caseId=Number(action.caseId);body.reason=values.get('reason');}
+    else {if(action.action==='remove-punishment')body.recordId=action.recordId;else body.caseId=Number(action.caseId);body.reason=values.get('reason');}
     } catch(e){setError((e as Error).message);return;}
     setBusy(true);setSubmitted(true);setError('');
     try{await api('/players/'+player.uuid+'/'+action.action,body,action.requestId);await changed();close();}
     catch(e){setError((e as Error).message+' Close this dialog and inspect the player and audit before submitting another action.');}
     finally{setBusy(false);}
   }}><div className="dialog-head"><h2>{title}</h2><button type="button" className="icon-button" aria-label="Close dialog" disabled={busy} onClick={close}>×</button></div><p className="muted">{player.name} · {player.uuid}</p>
-    {punish&&<><label>Action<select name="type" value={type} onChange={e=>setType(e.target.value)}>{admin&&offenses.length>0&&<option value="OFFENSE">Configured offense</option>}<option value="WARN">Warning</option><option value="KICK" disabled={!player.online}>Kick</option><option value="MUTE">Mute</option>{admin&&<option value="BAN">Ban</option>}</select></label>
+    {punish&&<><label>Action<select name="type" value={type} onChange={e=>setType(e.target.value)}>{has(session,'punish.offense')&&offenses.length>0&&<option value="OFFENSE">Configured offense</option>}{has(session,'punish.warn')&&<option value="WARN">Warning</option>}{has(session,'punish.kick')&&<option value="KICK" disabled={!player.online}>Kick</option>}{has(session,'punish.mute')&&<option value="MUTE">Mute</option>}{has(session,'punish.ban')&&<option value="BAN">Ban</option>}</select></label>
     {type==='OFFENSE'&&<label>Configured offense<select name="offense" value={offense} onChange={e=>setOffense(e.target.value)}>{offenses.map(o=><option key={o.id} value={o.id}>{o.group?o.group+' · ':''}{o.name}</option>)}</select><small>{offenses.find(o=>o.id===offense)?.steps?.join(' → ')}</small></label>}
     {['MUTE','BAN'].includes(type)&&<label>Duration<input name="duration" defaultValue="1d" maxLength={24} required/><small>3d, 1h, 30m, 1w, perm</small></label>}<label className="checkbox"><input name="silent" type="checkbox"/>Silent action</label></>}
     {!note&&<label>Reason<textarea name="reason" rows={4} maxLength={1000} required/></label>}

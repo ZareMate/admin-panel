@@ -6,17 +6,15 @@ import java.util.*;
 /** Validates moderation input before touching the game or its persistence layer. */
 record ModerationRequest(String type, String reason, String offense, long durationMillis, boolean silent, long caseId) {
     static ModerationRequest parse(Auth.User actor, String action, JsonObject body, boolean online, Set<String> offenses) {
-        if (!actor.canModerate()) throw new PanelServer.Failure(403, "Moderator role required");
+        Permissions.mutation(actor, action, body);
         String reason = PanelServer.string(body, "reason", 1000).trim();
-        if (action.equals("revoke")) {
-            if (!actor.isAdmin()) throw new PanelServer.Failure(403, "Administrator role required");
-            long id = integer(body, "caseId", 1, Long.MAX_VALUE);
+        if (action.equals("revoke") || action.equals("remove-punishment")) {
+            long id = integer(body, action.equals("revoke") ? "caseId" : "recordId", 1, 9_007_199_254_740_991L);
             return new ModerationRequest("REVOKE", reason, "", 0, false, id);
         }
         if (!action.equals("punish")) throw new IllegalArgumentException("Unknown moderation action");
         String type = PanelServer.string(body, "type", 16);
         if (!Set.of("WARN", "KICK", "MUTE", "BAN", "OFFENSE").contains(type)) throw new IllegalArgumentException("Unknown punishment type");
-        if (Set.of("BAN", "OFFENSE").contains(type) && !actor.isAdmin()) throw new PanelServer.Failure(403, "Administrator role required");
         boolean silent = false;
         if (body.has("silent")) {
             if (!body.get("silent").isJsonPrimitive() || !body.getAsJsonPrimitive("silent").isBoolean()) throw new IllegalArgumentException("silent must be a boolean");

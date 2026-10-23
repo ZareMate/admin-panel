@@ -26,11 +26,12 @@ final class BridgeClient implements AutoCloseable {
     BridgeClient(BridgeConfig config, Backend backend) { this.config = config; this.backend = backend; }
     void start() {
         reconnect.execute(this::connect);
-        reconnect.scheduleWithFixedDelay(() -> {
-            if (closed || socket == null || !sampling.compareAndSet(false, true)) return;
-            try { worker.execute(() -> { try { publish(); } finally { sampling.set(false); } }); }
-            catch (RejectedExecutionException busy) { sampling.set(false); }
-        }, 0, 1, TimeUnit.SECONDS);
+        reconnect.scheduleWithFixedDelay(this::requestPublish, 0, 1, TimeUnit.SECONDS);
+    }
+    void requestPublish() {
+        if (closed || socket == null || !sampling.compareAndSet(false, true)) return;
+        try { worker.execute(() -> { try { publish(); } finally { sampling.set(false); } }); }
+        catch (RejectedExecutionException busy) { sampling.set(false); }
     }
     private void connect() {
         if (closed) return;
@@ -56,7 +57,8 @@ final class BridgeClient implements AutoCloseable {
         public void onOpen(WebSocket ws) {
             if (closed) { ws.abort(); return; }
             listener = this; socket = ws;
-            worker.execute(watches::clear); ws.request(1);
+            try { worker.execute(watches::clear); ws.request(1); }
+            catch (RejectedExecutionException busy) { ws.abort(); end(ws); }
             LOG.info("Panel bridge connected to {}", config.url());
         }
         public CompletionStage<?> onText(WebSocket ws, CharSequence data, boolean last) {
@@ -86,6 +88,7 @@ final class BridgeClient implements AutoCloseable {
     private void respond(WebSocket ws, String text) {
         if (closed || socket != ws || ws.isOutputClosed()) return;
         JsonObject response = new JsonObject();
+        boolean publishAfter = false;
         try {
             JsonObject request = JsonParser.parseString(text).getAsJsonObject();
             response.addProperty("id", request.get("id").getAsString());
@@ -98,23 +101,21 @@ final class BridgeClient implements AutoCloseable {
             } else if (operation.equals("watch")) {
                 String key = PanelServer.string(request, "watchId", 80);
                 if (!watches.containsKey(key) && watches.size() >= 32) throw new PanelServer.Failure(503, "Live subscription capacity reached");
-                boolean list = request.get("target").getAsString().equals("players");
+                String target = request.get("target").getAsString();
+                if (!Set.of("players", "player").contains(target)) throw new IllegalArgumentException("Unknown watch target");
+                boolean list = target.equals("players");
                 watches.put(key, new Watch(list ? "players" : "player", list ? null : UUID.fromString(request.get("player").getAsString()), list ? null : actor(request.getAsJsonObject("actor")), null));
-                result = new JsonObject();
+                result = new JsonObject(); publishAfter = true;
             } else if (operation.equals("players")) result = backend.players();
             else {
                 UUID id = UUID.fromString(request.get("player").getAsString());
                 Auth.User user = actor(request.getAsJsonObject("actor"));
-                if (operation.equals("player")) result = backend.player(id, user);
+                if (operation.equals("player")) result = Permissions.detail(backend.player(id, user), user);
                 else if (operation.equals("mutate")) {
                     String action = request.get("action").getAsString();
                     JsonObject body = request.getAsJsonObject("body");
-                    if (!Set.of("punish", "revoke", "note-add", "note-edit", "note-remove").contains(action)) throw new IllegalArgumentException("Unknown action");
-                    if (!user.canModerate()) throw new PanelServer.Failure(403, "Moderator role required");
-                    if ((action.equals("revoke") || action.equals("punish") && (!body.has("type")
-                            || !Set.of("WARN", "KICK", "MUTE").contains(body.get("type").getAsString())))
-                            && !user.isAdmin()) throw new PanelServer.Failure(403, "Administrator role required");
-                    result = backend.mutate(id, user, action, body);
+                    Permissions.mutation(user, action, body);
+                    result = backend.mutate(id, user, action, body); publishAfter = true;
                 } else throw new IllegalArgumentException("Unknown operation");
             }
             response.add("result", result);
@@ -123,17 +124,27 @@ final class BridgeClient implements AutoCloseable {
             response.addProperty("error", error.getMessage() == null ? "Game request failed" : error.getMessage());
         }
         String message = response.toString();
-        if (message.length() > 8 * 1024 * 1024) {
-            response.remove("result"); response.addProperty("status", 413); response.addProperty("error", "Game response exceeds bridge limit");
+        if (message.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > BridgeBatches.MAX_BYTES) {
+            response.remove("result"); response.addProperty("status", 413); response.addProperty("error", "Game response exceeds 32 MiB transfer limit");
             message = response.toString();
         }
-        try { ws.sendText(message, true).get(10, TimeUnit.SECONDS); }
+        try { send(ws, message); if (publishAfter) requestPublish(); }
         catch (Exception failure) { ws.abort(); Listener active = listener; if (active != null && socket == ws) active.end(ws); }
+    }
+    private void send(WebSocket ws, String message) throws Exception {
+        // Worker serialization keeps transfers ordered; await each write for backpressure.
+        long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(30);
+        for(String frame:BridgeBatches.frames(message)) {
+            long remaining=deadline-System.nanoTime();
+            if(remaining<=0)throw new TimeoutException("Batch transfer timed out");
+            if(closed || socket!=ws)throw new IllegalStateException("Bridge disconnected");
+            ws.sendText(frame,true).get(remaining,TimeUnit.NANOSECONDS);
+        }
     }
     private static Auth.User actor(JsonObject actor) {
         String role = actor.get("role").getAsString();
         if (!Set.of("viewer", "moderator", "admin").contains(role)) throw new IllegalArgumentException("Invalid staff role");
-        return new Auth.User(actor.get("name").getAsString(), role, UUID.fromString(actor.get("uuid").getAsString()), "", actor.get("rank").getAsString());
+        return new Auth.User(actor.get("name").getAsString(), role, UUID.fromString(actor.get("uuid").getAsString()), "", actor.get("rank").getAsString(), Permissions.parse(actor.getAsJsonArray("permissions")));
     }
     // Volatile capture timestamps alone must not generate another full snapshot.
     private static void normalize(JsonElement value) {
@@ -150,18 +161,20 @@ final class BridgeClient implements AutoCloseable {
             Watch watch = entry.getValue();
             JsonObject event = new JsonObject(); event.addProperty("event", "snapshot"); event.addProperty("watchId", entry.getKey());
             try {
-                JsonObject data = watch.operation().equals("players") ? backend.players() : backend.player(watch.player(), watch.actor());
+                JsonObject data = watch.operation().equals("players") ? backend.players() : Permissions.detail(backend.player(watch.player(), watch.actor()), watch.actor());
                 JsonObject comparable = data.deepCopy(); normalize(comparable);
                 String fingerprint = comparable.toString();
                 if (fingerprint.equals(watch.previous())) continue;
                 event.add("data", data);
                 String message = event.toString();
-                if (message.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 8 * 1024 * 1024) throw new IllegalArgumentException("Live snapshot exceeds bridge limit");
-                ws.sendText(message, true).get(10, TimeUnit.SECONDS);
+                if (message.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > BridgeBatches.MAX_BYTES) throw new IllegalArgumentException("Live snapshot exceeds 32 MiB transfer limit");
+                try { send(ws, message); }
+                catch (Exception failed) { ws.abort(); Listener active=listener; if(active!=null && socket==ws)active.end(ws); return; }
                 entry.setValue(new Watch(watch.operation(), watch.player(), watch.actor(), fingerprint));
             } catch (Exception error) {
+                entry.setValue(new Watch(watch.operation(), watch.player(), watch.actor(), null));
                 event.remove("data"); event.addProperty("error", "Live snapshot unavailable; refresh to retry");
-                try { ws.sendText(event.toString(), true).get(10, TimeUnit.SECONDS); }
+                try { send(ws, event.toString()); }
                 catch (Exception disconnected) { ws.abort(); Listener active = listener; if (active != null && socket == ws) active.end(ws); return; }
             }
         }

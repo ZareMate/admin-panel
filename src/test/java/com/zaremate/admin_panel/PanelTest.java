@@ -35,6 +35,8 @@ public final class PanelTest {
     }
     public static void main(String[] args) throws Exception {
         checks += ModerationTest.run();
+        checks += BridgeBatchesTest.run();
+        checks += PunishmentRemovalTest.run();
         String hash = "00112233445566778899aabbccddeeff:" + Auth.hash("correct-password-123".toCharArray(), HexFormat.of().parseHex("00112233445566778899aabbccddeeff"));
         check(Auth.verify("correct-password-123",hash), "valid password");
         check(!Auth.verify("wrong",hash), "wrong password");

@@ -7,6 +7,7 @@ import { once } from 'node:events';
 import { loadConfig, type Config } from '../src/config.js';
 import { createApp } from '../src/app.js';
 import { token } from '../src/common.js';
+import { batchFrames } from '../src/batches.js';
 import { Bridge } from '../src/bridge.js';
 export const playerId='00000000-0000-0000-0000-000000000001';
 const salt='00112233445566778899aabbccddeeff';
@@ -41,15 +42,27 @@ export function gameFixture() {
   const detail:Record<string,any>={uuid:playerId,name:'TestPlayer',online:true,notesAvailable:true,notes:[],cases:[],punish:{available:true,offenses:[{id:'xray',name:'X-Ray',group:'Cheating',steps:['warn','ban']}]},tsa:{available:true,packetChecks:42,detections:['<img src=x onerror=window.xss=true>']},ass:{},teams:{},discord:{},clockin:{},
     location:{available:true,source:'live',dimension:'minecraft:overworld',x:1,y:64,z:2},playtime:{available:true,seconds:3700},
     storage:{source:'live',capturedAt:Date.now(),inventory:{available:true,groups:[{name:'Hotbar',slots:[{empty:false,label:'Hotbar 1',id:'test:gem',name:'<img src=x onerror=window.xss=true>',count:12,maxDamage:100,damage:5,enchantments:['Unbreaking 3'],lore:['A gem']},{empty:true,label:'Hotbar 2'}]}]},enderChest:{available:true,groups:[]},curios:{available:false,reason:'Curios unavailable'}}};
+  const players={players:[{uuid:playerId,name:'TestPlayer',online:true,hasDetections:true},{uuid:'00000000-0000-0000-0000-000000000002',name:'OfflinePlayer',online:false}],serverPlayers:1,maxPlayers:20,punishAvailable:true};
+  const watches=new Map<WebSocket,Map<string,Record<string,any>>>();
+  const publish=()=>{for(const [ws,entries] of watches)if(ws.readyState===WebSocket.OPEN)for(const [watchId,request] of entries){
+    const data=request.target==='players'?players:{...detail,uuid:request.player,notes:detail.notes.map((n:any)=>({...n,canEdit:n.author===request.actor.name}))};
+    for(const frame of batchFrames(JSON.stringify({event:'snapshot',watchId,data}),randomUUID()))ws.send(frame);
+  }};
   let mutations=0;const messages:Record<string,any>[]=[];
-  return {detail,messages,get mutations(){return mutations;},handler(request:Record<string,any>,ws:WebSocket){
+  return {detail,players,publish,messages,get mutations(){return mutations;},handler(request:Record<string,any>,ws:WebSocket){
     messages.push(request);let result:unknown;
-    if(request.operation==='players')result={players:[{uuid:playerId,name:'TestPlayer',online:true,hasDetections:true},{uuid:'00000000-0000-0000-0000-000000000002',name:'OfflinePlayer',online:false}],serverPlayers:1,maxPlayers:20,punishAvailable:true};
+    if(request.operation==='watch'){
+      if(!watches.has(ws)){watches.set(ws,new Map());ws.on('close',()=>watches.delete(ws));}
+      watches.get(ws)!.set(request.watchId,request);result={};
+    }else if(request.operation==='unwatch'){watches.get(ws)?.delete(request.watchId);result={};}
+    else if(request.operation==='players')result=players;
     else if(request.operation==='player')result=detail;
     else {
       if(request.action==='punish' && request.body.type!=='OFFENSE' && !Number.isSafeInteger(request.body.durationMinutes)) {ws.send(JSON.stringify({id:request.id,status:400,error:'durationMinutes must be an integer'}));return;}
       if(request.action==='revoke' && !Number.isSafeInteger(request.body.caseId)){ws.send(JSON.stringify({id:request.id,status:400,error:'caseId must be an integer'}));return;}
+      if(request.action==='remove-punishment'){const record=detail.cases.find((c:any)=>c.id===request.body.recordId);if(!record||record.removedBy||record.offense){ws.send(JSON.stringify({id:request.id,status:409,error:'Punishment missing, removed, or part of an offense'}));return;}record.active=false;record.removedBy=request.actor.name;}
       mutations++;if(request.action==='note-add')detail.notes.push({id:randomUUID(),text:request.body.text,author:request.actor.name,canEdit:true,createdAt:Date.now()});if(request.action==='note-edit'){const n=detail.notes.find((n:any)=>n.id===request.body.noteId);if(n)n.text=request.body.text;}if(request.action==='note-remove')detail.notes=detail.notes.filter((n:any)=>n.id!==request.body.noteId);if(request.action==='punish')detail.cases.push({id:mutations,type:request.body.type.toLowerCase(),reason:request.body.reason,active:true,by:request.actor.name,at:Date.now()});result={status:'saved'};}
-    ws.send(JSON.stringify({id:request.id,result}));
+    for(const frame of batchFrames(JSON.stringify({id:request.id,result}),randomUUID()))ws.send(frame);
+    if(request.operation==='watch'||request.operation==='mutate')publish();
   }};
 }

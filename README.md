@@ -27,19 +27,20 @@ The earlier standalone Java web-service JAR has been replaced; use the Node arch
 
 ## Features
 
-- Search online and known offline players by name or UUID, with status filters and automatic refresh.
+- Search online and known offline players by name or UUID, with status filters and live pushed updates.
+- Selected-player state updates approximately once per second while viewed; unchanged snapshots are suppressed and subscriptions recover after reconnect.
 - Player profiles with Discord identity, FTB Teams, ClockIn, TSA Anticheat checks/detections, and Airport Security records.
 - Punish history, direct warnings/kicks/mutes/bans, and configured offense escalation through the real Punish API.
 - Remove configured offense cases through Punish’s existing removal path, preserving its related-punishment and ban-list handling.
 - Add/edit/remove Admin Notes using its own persistence and author-ownership rules.
-- Discord sign-in with configurable guild rank precedence, viewer/moderator/admin access, login-time role checks, OAuth state protection, CSRF protection, and duplicate-request protection. Legacy local login remains an explicit compatibility option.
+- Discord sign-in with configurable guild rank precedence, explicit tab and action permissions, login-time role checks, OAuth state protection, CSRF protection, and duplicate-request protection. Legacy local login remains an explicit compatibility option.
 - Durable JSONL audit entries for successful logins, mutation requests, and their outcomes. Administrators can inspect/export the latest 500 events in the browser.
 
 The existing mods remain authoritative. This mod does not copy their databases. Missing optional mods or missing player records are shown as unavailable; no demo data is presented as live data.
 
 ## Inventory and item icons
 
-The player profile has read-only **Inventory**, **Ender Chest**, and **Curios** tabs, available to all authenticated staff access levels.
+The player profile has read-only **Inventory**, **Ender Chest**, and **Curios** tabs, each controlled by its own permission.
 
 - Online players: live hotbar, main inventory, armor, offhand, and Ender Chest snapshots.
 - Offline players: inventory and Ender Chest from the world’s existing player `.dat` file, labeled with its save time. Missing or undecodable saves show an unavailable message. Player data is never modified.
@@ -91,25 +92,15 @@ discord.rank-order=dev,owner,admin,mod,trial-mod,helper,trial-helper
 
 The secret can instead come from `ADMIN_PANEL_DISCORD_CLIENT_SECRET`, which takes precedence over the config entry. Keep it server-side; it is never sent to the browser. In Docker, publish TCP 8080 from the container running the standalone web service.
 
-The complete [default configuration](src/main/resources/admin-panel-default.properties) includes the required role-ID fields and their configurable access levels:
+The [web configuration template](web-server/admin-panel.example.properties) lists the rank role-ID fields and explicit permissions. Set `discord.rank.<rank>.role-id` and `discord.rank.<rank>.permissions`. The first matching rank in `discord.rank-order` wins; permissions from lower ranks are not combined. Empty permissions or a missing `panel.access` permission deny login. Restart Node after changing configuration.
 
-| Rank (highest first) | Discord role ID | Default panel access |
-| --- | --- | --- |
-| dev | `1512986854532579388` | admin |
-| owner | `1512986702161907712` | admin |
-| admin | `1534544787066327162` | admin |
-| mod | `1512987123672682656` | moderator |
-| trial-mod | `1518108874513584138` | moderator |
-| helper | `1512987186893557820` | viewer |
-| trial-helper | `1521965611121377280` | viewer |
-
-For each rank, set `discord.rank.<rank>.role-id` and `discord.rank.<rank>.access`. Access accepts `admin`, `moderator`, `viewer`, or `deny`. The **first matching rank** in `discord.rank-order` wins—even if a lower rank is configured with greater access. Discord’s visual role ordering and other Discord permissions do not override this configuration. Users with no matching rank are denied. Changing settings requires a Node service restart.
-
-For example, to make trial moderators read-only:
+For example, a trial moderator who can read profiles and notes and edit their own notes:
 
 ```properties
-discord.rank.trial-mod.access=viewer
+discord.rank.trial-mod.permissions=panel.access,tab.players,tab.overview,tab.notes,notes.edit
 ```
+
+See the [permission reference](web-server/README.md#permissions) for every tab and action. Old `.access` entries are accepted for migration; an explicit `.permissions` entry always overrides them. Saving ranks in the web UI writes explicit permissions.
 
 The server verifies guild membership and current role IDs only at login. Normal panel requests and moderation actions use the rank saved in the session and make no Discord API calls. Role changes or leaving the guild take effect on the next login; existing sessions retain their login-time access until logout, expiry, or server restart. Discord outages/rate limits block new logins but do not interrupt existing sessions. Login itself remains subject to Discord rate limits. Sessions expire after at most eight hours or when the OAuth access token expires, whichever comes first. Tokens remain in server memory and are discarded on logout/restart; logout ends the panel session but does not remove the application from the user’s Discord Authorized Apps.
 
@@ -167,13 +158,11 @@ HTTP sends passwords and session cookies without transport encryption; use this 
 
 ## Permissions
 
-| Capability | Viewer | Moderator | Admin |
-| --- | --- | --- | --- |
-| Player profiles, notes, security and punishment history | Yes | Yes | Yes |
-| Add notes; edit/remove own non-system notes | No | Yes | Yes |
-| Warn, kick, mute | No | Yes | Yes |
-| Ban, configured offense, remove offense case | No | No | Yes |
-| Read/export staff audit | No | No | Yes |
+Ranks grant individual permissions for each tab and action. The **Rank access** editor displays checkboxes and requires `access.manage`; no rank name automatically grants privileges. At least one saved rank must retain `panel.access` and `access.manage`.
+
+Permissions are enforced in HTTP endpoints, browser live streams, and Minecraft mutation handling. Hidden tabs also have their data removed from profile responses. Note editing/removal still requires ownership of a non-system note.
+
+On the **Punishments** tab, `punish.remove` permits removing a direct warning, kick record, mute, or ban. Removal preserves history and records the remover; removing a kick record cannot undo the original kick. `punish.revoke` removes an entire configured offense case and its related punishments. An unrelated live ban for the same UUID/IP stays enforced. Removal reasons are recorded in the web audit log.
 
 All mutation checks run server-side. Game/mod API access runs on the Minecraft server thread. Direct kick requires an online player. Durations are explicit, and zero means permanent. Configured offenses use the mod’s own escalation steps. Arbitrary console commands are not exposed.
 

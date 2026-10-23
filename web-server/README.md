@@ -85,8 +85,56 @@ Normal `npm start` loads `.env` if present. Hosting-provided environment variabl
 
 Bundled item exports are copied during the build. Optional additional exports go in `data/assets/icons/<namespace>__<item>.png`; copied mod jars go directly in `data/assets/` and are read only as asset archives. Restart Node after changing assets. Generated item textures, layered textures, and static cuboid models are previewed on the web host. Custom renderers, world tinting, and client-state-dependent items retain labeled fallbacks. Player list reads are coalesced and cached for two seconds; details stay viewer-specific for note ownership.
 
+## Live state updates
+
+Signed-in browsers connect to `/api/live` over WebSocket on the same host and port. Forward WebSocket upgrades for both `/bridge` (Minecraft) and `/api/live` (browsers); the nginx catch-all example above already does this. Install the updated mod and restart the Node service together, then reload browser tabs.
+
+The mod samples only subscribed data approximately once per second and pushes snapshots only when content changes. Player joins/leaves and panel mutations also request an immediate sample. The player list is shared across viewers; the selected profile is keyed by player and staff identity/permissions, preserving note ownership. Location, inventory, playtime, security data, notes, and punishments update while that profile is open. Timestamp-only changes do not resend entire snapshots. Under server load, updates may take longer than one second.
+
+Closing a tab or logging out removes its subscriptions; with no viewers, the mod does not continuously build live snapshots. Browser and Minecraft connections reconnect automatically and restore subscriptions. Expired sessions lose live access. Selected-player updates pause in the UI while a moderation dialog is open so forms are not disrupted. The Refresh button remains available, with a 30-second HTTP fallback when the live channel is unavailable. Commands are never replayed during reconnect.
+
+The service bounds live connections to 128 total and four per staff session, with up to 32 distinct game subscriptions (one shared list plus up to 31 profiles with distinct staff identities). Slow browser clients are disconnected instead of accumulating unlimited queued snapshots.
+
 ## Tests and Docker
 
 `npm run typecheck`, `npm run build`, and `npm test` validate the Node app and React UI. Browser tests require Chromium and a matching ChromeDriver. `gradle build` additionally runs the actual Java bridge client against Fastify; `npm test` alone skips that test unless `JAVA_BRIDGE_CLASSPATH` is set. Tests use temporary data and fake game/Discord services, not your live server.
 
 From the repository root, `docker build -f web-server/Dockerfile -t admin-panel-web .` builds the Node service. Mount a writable persistent directory at `/data`, supply environment variables, and publish port 3000. The container runs as the `node` user. The Docker image does not manage TLS certificates.
+
+## Permissions
+
+Ranks use `discord.rank.<name>.permissions`, a comma-separated list. The highest matching Discord rank wins; grants are not combined across ranks. Rank names do not grant permissions. Use **Rank access** to select each permission, save, and restart Node. The editor preserves one rank with both `panel.access` and `access.manage`. Authorization is captured at login; restarting Node clears existing sessions.
+
+| Permission | Allows |
+| --- | --- |
+| `panel.access` | Sign in (required) |
+| `tab.players` | Player directory and selecting profiles |
+| `tab.overview` | Overview, location, playtime, linked Discord, teams and ClockIn |
+| `tab.cases` | Punishment history and configured offenses |
+| `tab.notes` | Staff notes |
+| `tab.security` | Security records and detection badges |
+| `tab.inventory` | Inventory |
+| `tab.enderChest` | Ender Chest |
+| `tab.curios` | Curios |
+| `tab.audit` | Read and export audit history, including action details |
+| `access.manage` | View and edit Discord rank permissions |
+| `notes.add`, `notes.edit`, `notes.remove` | Individual note actions (also require player and notes tabs) |
+| `punish.warn`, `punish.kick`, `punish.mute`, `punish.ban`, `punish.offense` | Individual punishment actions (also require player and punishment tabs) |
+| `punish.remove` | Remove direct punishment records |
+| `punish.revoke` | Remove an entire configured offense case |
+
+Profile tabs also require `tab.players`. Empty permissions deny login. Notes remain editable/removable only by their author and cannot be system notes. Removal requires a reason and confirmation, preserves punishment history, and records the remover. Direct removals lift the selected record only; unrelated live bans remain enforced. Offense records must be removed through **Remove case** to keep escalation counts consistent. Removing a kick record does not reverse the kick. Reasons are retained in the web audit trail.
+
+Old `.access=admin|moderator|viewer|deny` settings still load with equivalent explicit grants; old admin access gains direct punishment removal, while rank management remains limited to old owner/dev mappings. An explicit `.permissions` entry, including an empty one, takes precedence. Saving ranks replaces legacy access keys with permissions. Local accounts can use `permissions.<username>=...` to override legacy grants; their existing `user.<username>=rank,UUID,SALT:HASH` format is retained and a custom rank name requires explicit permissions. Neither the browser nor the Minecraft bridge derives grants from those rank names.
+
+Install the rebuilt mod and web app together: bridge actors now carry explicit permissions, and the mod rejects requests without them.
+
+## Batched data transport
+
+Large initial reads and real-time snapshots are batched on **both** WebSocket hops: Minecraft → Node and Node → browser. Each chunk carries a transfer ID, sequence number, and total count. Chunks contain at most 8,192 UTF-16 characters, preserve emoji/surrogate pairs, and remain below the 64 KiB WebSocket message limit including JSON escaping. Small messages travel directly.
+
+Node and the browser expose a snapshot only after every chunk is received in order. Missing, duplicate, malformed, or timed-out transfers are discarded; reconnect starts fresh without replaying commands. Writes wait for the preceding frame to drain. Browser connections also have a bounded outgoing queue and authorization is checked between frames.
+
+There is a **32 MiB total UTF-8 limit per assembled message** and a 30-second transfer deadline. These bounds prevent unbounded buffering; exceeding them produces an error or disconnect instead of an encoding exception. Existing command deadlines still apply. Mutation requests remain small and retain their existing validation limits. HTTP refresh responses use normal HTTP JSON after bridge reassembly; they are not Minecraft string-codec packets.
+
+Deploy the updated mod and Node service together and reload browser tabs to load the matching batch receiver.

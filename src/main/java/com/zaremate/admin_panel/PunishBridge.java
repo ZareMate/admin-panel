@@ -23,7 +23,6 @@ final class PunishBridge {
         String reason = request.reason();
         JsonObject result = new JsonObject();
         if (action.equals("revoke")) {
-            if (!actor.isAdmin()) throw new PanelServer.Failure(403, "Administrator role required");
             long caseId = request.caseId();
             boolean exists = service.db().records().stream().anyMatch(r -> id.toString().equals(r.uuid) && r.caseId == caseId && r.offense != null && r.removedBy == null);
             if (!exists) throw new PanelServer.Failure(409, "Offense case is missing or already removed");
@@ -31,6 +30,21 @@ final class PunishBridge {
             var target = new PunishService.Target(name, id.toString(), null, new GameProfile(id, name), online);
             int count = service.removeOffense(server, target, caseId, new net.minecraft.commands.CommandSourceStack(server, net.minecraft.world.phys.Vec3.ZERO, net.minecraft.world.phys.Vec2.ZERO, server.overworld(), 4, actor.name(), net.minecraft.network.chat.Component.literal(actor.name()), server, null));
             result.addProperty("removed", count); result.addProperty("reason", reason); return result;
+        }
+        if (action.equals("remove-punishment")) {
+            long now = System.currentTimeMillis();
+            var plan = PunishmentRemoval.plan(service.db().records().stream().map(r -> new PunishmentRemoval.Entry(
+                    r.id, r.uuid, r.offense, r.removedBy, r.type, r.ipBased, r.ip, r.live(now))).toList(), request.caseId(), id);
+            var record = service.db().records().stream().filter(r -> r.id == plan.record().id()).findFirst().orElseThrow();
+            var source = new net.minecraft.commands.CommandSourceStack(server, net.minecraft.world.phys.Vec3.ZERO, net.minecraft.world.phys.Vec2.ZERO, server.overworld(), 4, actor.name(), net.minecraft.network.chat.Component.literal(actor.name()), server, null);
+            service.lift(record, source);
+            service.save();
+            // Preserve unrelated bans for the same UUID or IP.
+            if (plan.clearBan()) {
+                if (record.ipBased && record.ip != null) server.getPlayerList().getIpBans().remove(record.ip);
+                else if (!record.ipBased) server.getPlayerList().getBans().remove(new GameProfile(id, name));
+            }
+            result.addProperty("removed", 1); result.addProperty("recordId", record.id); result.addProperty("reason", reason); return result;
         }
         String type = request.type();
         boolean silent = request.silent();
