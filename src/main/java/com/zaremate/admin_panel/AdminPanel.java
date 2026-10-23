@@ -18,9 +18,10 @@ public final class AdminPanel {
             var path = event.getServer().getServerDirectory().resolve("config/admin-panel-bridge.properties");
             BridgeConfig config = BridgeConfig.load(path);
             if (config == null) {
-                LoggerFactory.getLogger("admin_panel").info("Configure {} to connect to the standalone panel. No HTTP listener is started in Minecraft.", path);
+                LoggerFactory.getLogger("admin_panel").info("Panel bridge disabled or not configured at {}. No HTTP listener is started in Minecraft.", path);
                 return;
             }
+            LoggerFactory.getLogger("admin_panel").info("Starting panel bridge to {}", config.url());
             bridge = new BridgeClient(config, new MinecraftBackend(event.getServer()));
             bridge.start();
         } catch (Exception e) { LoggerFactory.getLogger("admin_panel").error("Panel bridge could not start", e); }
