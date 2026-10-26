@@ -26,5 +26,5 @@ final class PunishmentRemovalTest {
         return new PunishmentRemoval.Entry(id,player.toString(),offense,removedBy,type,ipBased,ip,live);
     }
     private static void check(boolean result,String label){if(!result)throw new AssertionError(label);}
-    private static void rejected(Runnable work){try{work.run();throw new AssertionError("Removal should be rejected");}catch(PanelServer.Failure expected){if(expected.status!=409)throw new AssertionError(expected);}}
+    private static void rejected(Runnable work){try{work.run();throw new AssertionError("Removal should be rejected");}catch(BridgeFailure expected){if(expected.status!=409)throw new AssertionError(expected);}}
 }

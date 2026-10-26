@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import type { Api, Session, Player, Players, Detail, AuditRow, Rank } from './types';
+import type { Api, Session, Players, Detail, AuditRow, Rank } from './types';
 import { PlayerDetail, type Action } from './PlayerDetail';
 import { has, PERMISSIONS, PERMISSION_LABELS } from '../src/permissions';
 import { BatchReceiver } from '../src/batches';

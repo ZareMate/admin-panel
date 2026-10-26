@@ -19,7 +19,7 @@ final class BridgeClient implements AutoCloseable {
             new ArrayBlockingQueue<>(32), new ThreadPoolExecutor.AbortPolicy());
     private final Map<String, Watch> watches = new HashMap<>();
     private final java.util.concurrent.atomic.AtomicBoolean sampling = new java.util.concurrent.atomic.AtomicBoolean();
-    private record Watch(String operation, UUID player, Auth.User actor, String previous) {}
+    private record Watch(String operation, UUID player, StaffActor actor, String previous) {}
     private volatile boolean closed;
     private volatile WebSocket socket;
     private volatile Listener listener;
@@ -93,14 +93,14 @@ final class BridgeClient implements AutoCloseable {
             JsonObject request = JsonParser.parseString(text).getAsJsonObject();
             response.addProperty("id", request.get("id").getAsString());
             if (request.get("version").getAsInt() != 1) throw new IllegalArgumentException("Unsupported bridge protocol");
-            if (request.get("deadline").getAsLong() < System.currentTimeMillis()) throw new PanelServer.Failure(504, "Request expired before execution");
+            if (request.get("deadline").getAsLong() < System.currentTimeMillis()) throw new BridgeFailure(504, "Request expired before execution");
             String operation = request.get("operation").getAsString();
             JsonElement result;
             if (operation.equals("unwatch")) {
                 watches.remove(request.get("watchId").getAsString()); result = new JsonObject();
             } else if (operation.equals("watch")) {
-                String key = PanelServer.string(request, "watchId", 80);
-                if (!watches.containsKey(key) && watches.size() >= 32) throw new PanelServer.Failure(503, "Live subscription capacity reached");
+                String key = RequestFields.string(request, "watchId", 80);
+                if (!watches.containsKey(key) && watches.size() >= 32) throw new BridgeFailure(503, "Live subscription capacity reached");
                 String target = request.get("target").getAsString();
                 if (!Set.of("players", "player").contains(target)) throw new IllegalArgumentException("Unknown watch target");
                 boolean list = target.equals("players");
@@ -109,7 +109,7 @@ final class BridgeClient implements AutoCloseable {
             } else if (operation.equals("players")) result = backend.players();
             else {
                 UUID id = UUID.fromString(request.get("player").getAsString());
-                Auth.User user = actor(request.getAsJsonObject("actor"));
+                StaffActor user = actor(request.getAsJsonObject("actor"));
                 if (operation.equals("player")) result = Permissions.detail(backend.player(id, user), user);
                 else if (operation.equals("mutate")) {
                     String action = request.get("action").getAsString();
@@ -120,7 +120,7 @@ final class BridgeClient implements AutoCloseable {
             }
             response.add("result", result);
         } catch (Exception error) {
-            response.addProperty("status", error instanceof PanelServer.Failure f ? f.status : error instanceof IllegalArgumentException ? 400 : 500);
+            response.addProperty("status", error instanceof BridgeFailure f ? f.status : error instanceof IllegalArgumentException ? 400 : 500);
             response.addProperty("error", error.getMessage() == null ? "Game request failed" : error.getMessage());
         }
         String message = response.toString();
@@ -141,10 +141,8 @@ final class BridgeClient implements AutoCloseable {
             ws.sendText(frame,true).get(remaining,TimeUnit.NANOSECONDS);
         }
     }
-    private static Auth.User actor(JsonObject actor) {
-        String role = actor.get("role").getAsString();
-        if (!Set.of("viewer", "moderator", "admin").contains(role)) throw new IllegalArgumentException("Invalid staff role");
-        return new Auth.User(actor.get("name").getAsString(), role, UUID.fromString(actor.get("uuid").getAsString()), "", actor.get("rank").getAsString(), Permissions.parse(actor.getAsJsonArray("permissions")));
+    private static StaffActor actor(JsonObject actor) {
+        return new StaffActor(RequestFields.string(actor, "name", 256), UUID.fromString(RequestFields.string(actor, "uuid", 36)), RequestFields.string(actor, "rank", 32), Permissions.parse(actor.getAsJsonArray("permissions")));
     }
     // Volatile capture timestamps alone must not generate another full snapshot.
     private static void normalize(JsonElement value) {

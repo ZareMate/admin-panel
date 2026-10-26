@@ -16,7 +16,7 @@ origin = sys.argv[1]
 discord_mode = len(sys.argv) > 2 and sys.argv[2] == "discord"
 driver = shutil.which('chromedriver')
 if not driver:
-    raise SystemExit('Install Chromium and matching chromedriver to run browserTest (required by gradle build).')
+    raise SystemExit('Install Chromium and matching chromedriver to run webTest (required by gradle build).')
 with socket.socket() as sock:
     sock.bind(('127.0.0.1', 0))
     port = sock.getsockname()[1]

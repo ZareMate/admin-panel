@@ -1,6 +1,6 @@
 import { WebSocket } from 'ws';
 import { randomUUID } from 'node:crypto';
-import { Failure, type User, object } from './common.js';
+import { Failure, type User } from './common.js';
 import { BatchReceiver } from './batches.js';
 interface Pending { resolve:(value:unknown)=>void; reject:(error:Error)=>void; timer:NodeJS.Timeout }
 export class Bridge {
@@ -95,6 +95,6 @@ export class Bridge {
   }
   player(player:string, actor:User) { return this.call('player',{player,actor:this.actor(actor)}); }
   mutate(player:string, actor:User, action:string, body:unknown) { this.cached=undefined; return this.call('mutate',{player,actor:this.actor(actor),action,body}); }
-  private actor(user:User) { return {name:user.name,role:user.role,rank:user.rank,uuid:user.uuid,permissions:user.permissions||[]}; }
+  private actor(user:User) { return {name:user.name,rank:user.rank,uuid:user.uuid,permissions:user.permissions||[]}; }
   close() { this.batches.reset(); clearInterval(this.timer); this.failAll(); this.peer?.terminate(); this.peer=undefined; }
 }

@@ -4,7 +4,6 @@ WORKDIR /app/web-server
 COPY web-server/package.json web-server/package-lock.json ./
 RUN npm ci
 COPY web-server/ ./
-COPY src/main/resources/icons/ /app/src/main/resources/icons/
 RUN npm run build
 
 FROM node:24-bookworm-slim

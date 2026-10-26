@@ -2,8 +2,7 @@ import { randomBytes, timingSafeEqual, createHash } from 'node:crypto';
 export class Failure extends Error {
   constructor(public statusCode: number, message: string) { super(message); }
 }
-export type Role = 'viewer' | 'moderator' | 'admin';
-export interface User { name: string; role: Role; rank: string; uuid: string; hash?: string; permissions?: string[] }
+export interface User { name: string; rank: string; uuid: string; hash?: string; permissions?: string[] }
 export const token = () => randomBytes(32).toString('base64url');
 export function equal(a: string, b: string) {
   const x = Buffer.from(a), y = Buffer.from(b);

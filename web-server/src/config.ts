@@ -1,12 +1,12 @@
 import { readFile, mkdir, writeFile, rename, unlink } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
-import { Failure, type User, type Role, text, uuid, token } from './common.js';
+import { Failure, type User, text, uuid, token } from './common.js';
 import { PERMISSIONS, legacyPermissions } from './permissions.js';
 export function permissions(value:unknown):string[] {
  if(!Array.isArray(value)||!value.every(p=>typeof p==='string'&&(PERMISSIONS as readonly string[]).includes(p)))throw new Failure(400,'Unknown permission');
  return [...new Set(value)] as string[];
 }
-export interface Rank { name: string; discordRoleId: string; access: Role | 'deny'; permissions:string[] }
+export interface Rank { name: string; discordRoleId: string; permissions:string[] }
 export interface Config {
   origin: string; bind: string; port: number; secure: boolean; bridgeToken: string;
   mode: 'local' | 'discord'; users: Map<string, User>; ranks: Rank[];
@@ -42,7 +42,7 @@ export function validateRanks(value: unknown, requireManager = true): Rank[] {
     const name = text(row.name,32), id = snowflake(row.discordRoleId), access = row.access;
     if (!/^[a-z][a-z0-9-]{0,31}$/.test(name) || names.has(name) || ids.has(id)) throw new Failure(400, 'Invalid or duplicate rank');
     names.add(name); ids.add(id); if(row.permissions===undefined&&!['admin','moderator','viewer','deny'].includes(access))throw new Failure(400,'Permissions required');
-    return {name, discordRoleId:id, access:['admin','moderator','viewer','deny'].includes(access)?access:'viewer', permissions:permissions(row.permissions===undefined?legacyPermissions(access,name):row.permissions)} as Rank;
+    return {name, discordRoleId:id, permissions:permissions(row.permissions===undefined?legacyPermissions(access,name):row.permissions)} as Rank;
   });
   if (requireManager && !ranks.some(r => r.permissions.includes('panel.access') && r.permissions.includes('access.manage'))) throw new Failure(400, 'Keep a rank with panel.access and access.manage');
   return ranks;
@@ -66,7 +66,7 @@ export async function loadConfig(env = process.env): Promise<Config> {
     if (key.startsWith('user.') && mode === 'local') {
       const name = key.slice(5), [role,id,hash,...extra] = value.split(',');
       if (!/^[a-zA-Z0-9_-]{3,32}$/.test(name) || (!/^[a-z][a-z0-9-]{0,31}$/.test(role!) || (!['viewer','moderator','admin'].includes(role!)&&!props.has('permissions.'+name))) || !/^[0-9a-f]{32}:[0-9a-f]{64}$/.test(hash!) || extra.length) throw new Error('Invalid staff account: ' + name);
-      users.set(name,{name,role:(['viewer','moderator','admin'].includes(role!)?role:'viewer') as Role,rank:role!,uuid:uuid(id),hash,permissions:props.has('permissions.'+name)?permissions(props.get('permissions.'+name)!.split(',').map(s=>s.trim()).filter(Boolean)):legacyPermissions(role!)});
+      users.set(name,{name,rank:role!,uuid:uuid(id),hash,permissions:props.has('permissions.'+name)?permissions(props.get('permissions.'+name)!.split(',').map(s=>s.trim()).filter(Boolean)):legacyPermissions(role!)});
     }
     if (key.startsWith('discord.minecraft.')) mappings.set(snowflake(key.slice(18)),uuid(value.trim()));
   }

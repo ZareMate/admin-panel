@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path';
 import { pbkdf2Sync, randomUUID } from 'node:crypto';
 import { WebSocket } from 'ws';
 import { once } from 'node:events';
-import { loadConfig, type Config } from '../src/config.js';
+import { loadConfig } from '../src/config.js';
 import { createApp } from '../src/app.js';
 import { token } from '../src/common.js';
 import { batchFrames } from '../src/batches.js';

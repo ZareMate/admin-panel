@@ -20,3 +20,18 @@ test('host-side icons preserve exported PNGs, layered textures, static blocks, a
   assert.equal(result['test:missing'],'');assert.equal(result['test:tint'],'');
  }finally{await rm(dir,{recursive:true,force:true});}
 });
+
+test('production image resolver rejects cycles, custom renderers, traversal and invalid skins',async()=>{
+ const dir=await mkdtemp(join(tmpdir(),'node-image-safety-'));try{
+  await mkdir(join(dir,'assets/test/models/item'),{recursive:true});
+  for(const [id,model] of Object.entries({cycle:{parent:'test:item/cycle'},texture:{parent:'item/generated',textures:{layer0:'#loop',loop:'#loop'}},custom:{loader:'custom:renderer'},escape:{parent:'../../private'}}))await writeFile(join(dir,'assets/test/models/item/'+id+'.json'),JSON.stringify(model));
+  const {validItem}=await import('../src/images.js');
+  for(const id of ['test:../private','../test:item','test:/private','test:a//b'])assert(!validItem(id));
+  const png=await sharp({create:{width:16,height:16,channels:4,background:'#ff3300'}}).png().toBuffer();
+  let calls=0;const images=new Images(dir,dir,async()=>{calls++;return new Response(new Uint8Array(png));});await images.init();
+  assert.deepEqual(await images.icons(['test:cycle','test:texture','test:custom','test:escape']),{'test:cycle':'','test:texture':'','test:custom':'','test:escape':''});
+  await assert.rejects(images.skin('invalid','Player'));await assert.rejects(images.skin('body','../bad'));assert.equal(calls,0);
+  assert.deepEqual(await images.skin('head','Player'),png);assert.deepEqual(await images.skin('head','player'),png);assert.equal(calls,1);
+  await assert.rejects(new Images(dir,dir,async()=>new Response('not-a-png')).skin('head','Player'),/Invalid skin/);
+ }finally{await rm(dir,{recursive:true,force:true});}
+});

@@ -78,7 +78,7 @@ export async function createApp(config:Config, options:{bridge?:Bridge;fetcher?:
       reply.setCookie('panel_session',auth.create(login.user,login.expires),sessionCookie).clearCookie('panel_oauth',oauthCookie);return reply.redirect('/');
     }catch(error){reply.clearCookie('panel_oauth',oauthCookie);return reply.redirect('/?loginError='+encodeURIComponent(error instanceof Failure?error.message:'Discord sign-in failed. Try again.'));}
   });
-  app.get('/api/session',async req=>{const s=req.panelSession!;return {name:s.user.name,role:s.user.role,rank:s.user.rank,permissions:s.user.permissions||[],csrf:s.csrf};});
+  app.get('/api/session',async req=>{const s=req.panelSession!;return {name:s.user.name,rank:s.user.rank,permissions:s.user.permissions||[],csrf:s.csrf};});
   app.post('/api/logout',async(req,reply)=>{auth.logout(req.cookies.panel_session||'');live.revoke(req.cookies.panel_session||'');reply.clearCookie('panel_session',sessionCookie);return {};});
   app.get('/api/players',async req=>{requirePermission(req.panelSession!.user,'tab.players');return filterPlayers(await bridge.players(),req.panelSession!.user);});
   app.get<{Params:{id:string}}>('/api/players/:id',async req=>{const user=req.panelSession!.user;requirePermission(user,'tab.players');return filterDetail(await bridge.player(uuid(req.params.id),user),user);});

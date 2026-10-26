@@ -34,7 +34,7 @@ The earlier standalone Java web-service JAR has been replaced; use the Node arch
 - Remove configured offense cases through Punish’s existing removal path, preserving its related-punishment and ban-list handling.
 - Add/edit/remove Admin Notes using its own persistence and author-ownership rules.
 - Discord sign-in with configurable guild rank precedence, explicit tab and action permissions, login-time role checks, OAuth state protection, CSRF protection, and duplicate-request protection. Legacy local login remains an explicit compatibility option.
-- Durable JSONL audit entries for successful logins, mutation requests, and their outcomes. Administrators can inspect/export the latest 500 events in the browser.
+- Durable JSONL audit entries for successful logins, mutation requests, and their outcomes. Staff with `tab.audit` can inspect/export the latest 500 events in the browser.
 
 The existing mods remain authoritative. This mod does not copy their databases. Missing optional mods or missing player records are shown as unavailable; no demo data is presented as live data.
 
@@ -74,7 +74,7 @@ Both jars are required at compile time and are **not bundled**. Output: `build/l
 
 1. Replace the old panel jar in the dedicated server’s `mods/` folder with `admin_panel-2.0.0.jar`. Keep Admin GUI and the desired integration mods installed; remove older panel jars.
 2. Create/select an application in the [Discord Developer Portal](https://discord.com/developers/applications). Copy its OAuth2 **client ID** and **client secret** into the server configuration. A bot token is not needed.
-3. Register the **exact** OAuth2 redirect URI `<origin>/api/auth/discord/callback`. For the current LAN origin this is `http://10.0.0.1:8080/api/auth/discord/callback`. If Discord does not accept your chosen HTTP redirect, use the HTTPS proxy setup below and register that HTTPS origin instead.
+3. Register the **exact** OAuth2 redirect URI `<origin>/api/auth/discord/callback`. For the current LAN origin this is `http://10.0.0.1:8080/api/auth/discord/callback`. If Discord does not accept your chosen HTTP redirect, use the HTTPS proxy setup in the Node deployment guide and register that HTTPS origin instead.
 4. Merge the settings below into `config/admin-panel.properties`, set `enabled=true` on the web host and restart the Node service. The browser shows **Continue with Discord**.
 
 ```properties
@@ -102,7 +102,7 @@ discord.rank.trial-mod.permissions=panel.access,tab.players,tab.overview,tab.not
 
 See the [permission reference](web-server/README.md#permissions) for every tab and action. Old `.access` entries are accepted for migration; an explicit `.permissions` entry always overrides them. Saving ranks in the web UI writes explicit permissions.
 
-The server verifies guild membership and current role IDs only at login. Normal panel requests and moderation actions use the rank saved in the session and make no Discord API calls. Role changes or leaving the guild take effect on the next login; existing sessions retain their login-time access until logout, expiry, or server restart. Discord outages/rate limits block new logins but do not interrupt existing sessions. Login itself remains subject to Discord rate limits. Sessions expire after at most eight hours or when the OAuth access token expires, whichever comes first. Tokens remain in server memory and are discarded on logout/restart; logout ends the panel session but does not remove the application from the user’s Discord Authorized Apps.
+The server verifies guild membership and current role IDs only at login. Normal panel requests and moderation actions use the rank saved in the session and make no Discord API calls. Role changes or leaving the guild take effect on the next login; existing sessions retain their login-time access until logout, expiry, or server restart. Discord outages/rate limits block new logins but do not interrupt existing sessions. Login itself remains subject to Discord rate limits. Sessions expire after at most eight hours or when the OAuth access token expires, whichever comes first. OAuth tokens are discarded after the login exchange; logout ends the panel session but does not remove the application from the user’s Discord Authorized Apps.
 
 The flow uses the authorization-code grant with `identify` and `guilds.members.read`, and a one-use, five-minute OAuth state tied to an HttpOnly browser cookie. See [Discord OAuth2 documentation](https://github.com/discord/discord-api-docs/blob/main/developers/topics/oauth2.mdx).
 
@@ -124,37 +124,9 @@ To deliberately use the old mode, set `auth.mode=local`, generate `user.*` entri
 
 ### Remote access
 
-Use an HTTPS reverse proxy with the backend bound to loopback. Set `origin` to the exact browser origin, without a path or trailing slash, and preserve that host in forwarded requests. Non-local HTTP origins are rejected by default; HTTPS enables Secure session cookies.
+Configure HTTPS, the public origin, proxy trust, and WebSocket forwarding on the Node host. See the [Node deployment guide](web-server/README.md) for the current nginx configuration and Docker settings. Forward upgrades for both `/bridge` and `/api/live`. Minecraft only needs its outbound bridge URL and shared token.
 
-Example nginx location inside a TLS-configured virtual host:
-
-```nginx
-location / {
-    proxy_pass http://127.0.0.1:8080;
-    proxy_set_header Host $http_host;
-    proxy_read_timeout 25s;
-    client_max_body_size 16k;
-}
-```
-
-Set `origin=https://admin.example.com` in the mod config. The backend checks the browser Origin on every POST and the configured Host on every request. It does not trust forwarded client-IP headers: login throttling is per connection IP, so users behind one proxy share the ten-attempt / five-minute limit. Apply additional rate limiting at your proxy if needed.
-
-### Direct LAN HTTP / Crafty Docker
-
-Version 1.0.1 adds an explicit HTTP opt-in for trusted-network access:
-
-```properties
-enabled=true
-bind=0.0.0.0
-port=8080
-origin=http://10.0.0.1:8080
-allow-insecure-http=true
-# Keep your auth.mode=discord and discord.* settings here.
-```
-
-`origin` is the literal URL used in the browser, not a Markdown link. Inside Docker, bind to `0.0.0.0` rather than the host's LAN IP, and publish TCP port 8080 from the container running the standalone web service to the host. Host-network containers can instead bind an address available on that host. Restart the Node service after changing web configuration; restart Minecraft after replacing its bridge jar. Remove the older panel jar to avoid duplicate mod IDs.
-
-HTTP sends passwords and session cookies without transport encryption; use this opt-in only on a trusted network. Host validation, exact-origin checks, CSRF protection, login requirements, and role restrictions remain enabled. Public access should use the HTTPS proxy setup above.
+For a trusted private HTTP network, set `allow-insecure-http=true` on the web host and `allow-insecure-ws=true` on Minecraft when using a remote `ws://` URL. Restart the affected service after changing its configuration.
 
 ## Permissions
 
@@ -170,29 +142,21 @@ All mutation checks run server-side. Game/mod API access runs on the Minecraft s
 
 - Audit file: `logs/admin-panel-audit.jsonl`. Back it up alongside the underlying mods’ data. It contains moderation reasons and note text; restrict filesystem access. It is append-only from the panel, not cryptographically tamper-proof against server operators.
 - Each mutation writes a durable `requested` record before invoking the mod, then its result. A timeout or exception may leave execution unconfirmed: inspect the player and audit before retrying. Request IDs prevent resubmission within the current server/session lifetime; they are not a cross-restart exactly-once guarantee.
-- Offense case removal is supported. Lifting **direct** punishments still uses the Punish mod’s commands; the UI explicitly labels this distinction. IP-based punishment creation and arbitrary server commands are not exposed.
+- Offense case removal is supported. Direct warnings, kick records, mutes and bans can also be removed in the web UI with `punish.remove`. IP-based punishment creation and arbitrary server commands are not exposed.
 - History lists records belonging to the selected UUID, with IP values hidden. It is not a complete cross-account IP investigation view.
 - Player discovery and integration availability follow Admin GUI’s APIs. An unavailable integration record can mean the optional mod is absent, incompatible, or has no data for that player.
-- The HTTP server uses four workers and a bounded request queue. For public deployments, terminate TLS and enforce connection/body timeouts at a reverse proxy.
+- The Fastify web service and Java bridge bound request sizes, pending commands and live subscriptions. Large snapshots are batched on both WebSocket hops; see the [transport limits](web-server/README.md#batched-data-transport).
 ## Automated tests
 
-`gradle build` runs all suites automatically; any suite failing fails the build:
+`gradle build` runs the current suites; a failure fails the build:
 
-- `gradle panelTest`: real HTTP requests covering authentication, authorization, CSRF, duplicate submissions, request limits, logout, and durable audit records, plus the production moderation validator’s role matrix, exact duration bounds, invalid types, offline kicks, configured offenses, and case IDs.
-- `gradle iconTest`: model inheritance, texture references/cycles, animation frame cropping, missing/custom model fallback, traversal rejection, and bounded batches.
-- `gradle discordTest`: OAuth state/cookie binding, replay and expiry, rank combinations and configurable order, revoked roles, membership failures, missing consent scopes, fail-closed outages, callback/session handling, and disabled password fallback. Uses a fake Discord API; no real credentials or network calls.
-- `gradle browserTest`: tests both local and Discord login modes, then launches the production frontend and HTTP server with deterministic test-only player data in headless Chromium. Checks login/logout, search, status filters, player selection, note creation, punishment confirmation/history, audit rendering, XSS escaping, mobile overflow, viewer restrictions, and uncaught JavaScript errors.
+- `gradle bridgeTest`: Java bridge configuration, request validation, explicit permissions, moderation bounds, exact-record removal planning, and Unicode-safe batching.
+- `gradle webTest`: Fastify authentication/CSRF/audit, Discord OAuth errors and login snapshots, permissions, image resolution, live subscriptions, reconnects, and bounded batches. Runs the real Java bridge against Node, including a 9 MiB transfer, and the production React UI in Chromium.
+- `gradle webTypecheck`: TypeScript validation, including unused imports, locals and parameters.
+- `gradle verifyModJar`: ensures the mod artifact contains no retired Java web-server classes, legacy pages, bundled icons, or test fixtures.
 
-Browser tests require Python 3, Chromium, and a matching `chromedriver` on PATH. No npm or Python packages are needed. The build fails clearly if the browser dependency is missing; tests are never silently skipped. Chromium uses its normal sandbox. Containers that cannot support that sandbox can explicitly opt in with `PANEL_TEST_NO_SANDBOX=1` for test runs only.
+`webTest` builds the web app first. It requires Node.js 22.12+, Python 3, Chromium, and matching `chromedriver` on PATH. Browser failure artifacts are written to `build/reports/react-browser/`. Containers unable to support Chromium's normal sandbox may explicitly set `PANEL_TEST_NO_SANDBOX=1` for tests.
 
-Browser failure screenshots, HTML, and driver logs are written to `build/reports/browser/`. The test HTTP server uses an ephemeral loopback port and temporary audit storage, and does not connect to a Minecraft server or modify real player data.
+The retired embedded Java server, setup pages, image renderer and their duplicate test suites have been removed. Web authentication, assets and UI are tested against the Node/React implementation. Existing properties/account migration remains supported by Node; the local account generator in `tools/create-user.py` is still used.
 
-These tests automate application regression checks, including OAuth callback integration against a fake provider. They do not perform a live Discord authorization, launch Minecraft or assert that third-party mods actually enforce bans, persist notes, or load on a particular modpack.
-
-### Discord connection diagnostics
-
-Version 1.2.1 distinguishes token exchange, identity lookup, and guild membership failures, and logs their HTTP status without response bodies, OAuth codes, or tokens. Invalid application credentials have a specific message. HTTP 429 responses trigger a cooldown using Discord’s Retry-After header or retry_after body field; requests fail closed during that cooldown instead of repeatedly calling Discord. The API client sends an identifying User-Agent.
-
-`gradle discordHttpTest` tests status classification, response redaction, retry delays, cooldown recovery, and malformed responses with an injected transport. Live Discord failures still require the reported status/stage to diagnose.
-
-`gradle iconFallbackTest` verifies PNG delivery on a JVM without `java.desktop`. `gradle installedIconTest -PmodAssetsPath=/path/to/mods` optionally verifies Create, Create Addition, TFMG, Power Grid, and Create Better Motors assets against installed jars; those jars are not bundled.
+Tests use temporary data and fake game/Discord services. They do not perform live Discord authorization or verify third-party mod enforcement on an installed Minecraft server.

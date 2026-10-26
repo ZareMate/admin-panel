@@ -16,7 +16,7 @@ final class PunishBridge {
                 .forEach(r -> { JsonObject row = r.toJson(); row.remove("ip"); row.remove("seenAccounts"); a.add(row); });
         return a;
     }
-    static JsonElement mutate(MinecraftServer server, UUID id, String name, Auth.User actor, String action, JsonObject b) {
+    static JsonElement mutate(MinecraftServer server, UUID id, String name, StaffActor actor, String action, JsonObject b) {
         var service = PunishMod.service(server.getServerDirectory());
         ModerationRequest request = ModerationRequest.parse(actor, action, b, server.getPlayerList().getPlayer(id) != null,
                 service.offenses().stream().map(o -> o.id()).collect(java.util.stream.Collectors.toSet()));
@@ -25,7 +25,7 @@ final class PunishBridge {
         if (action.equals("revoke")) {
             long caseId = request.caseId();
             boolean exists = service.db().records().stream().anyMatch(r -> id.toString().equals(r.uuid) && r.caseId == caseId && r.offense != null && r.removedBy == null);
-            if (!exists) throw new PanelServer.Failure(409, "Offense case is missing or already removed");
+            if (!exists) throw new BridgeFailure(409, "Offense case is missing or already removed");
             var online = server.getPlayerList().getPlayer(id);
             var target = new PunishService.Target(name, id.toString(), null, new GameProfile(id, name), online);
             int count = service.removeOffense(server, target, caseId, new net.minecraft.commands.CommandSourceStack(server, net.minecraft.world.phys.Vec3.ZERO, net.minecraft.world.phys.Vec2.ZERO, server.overworld(), 4, actor.name(), net.minecraft.network.chat.Component.literal(actor.name()), server, null));

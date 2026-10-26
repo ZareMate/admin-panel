@@ -62,3 +62,6 @@ node_modules/
 web-server/dist/
 web-server/data/
 web-server/public/icons/
+
+# Standalone Discord bot
+discord-bot/dist/

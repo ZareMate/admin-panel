@@ -18,7 +18,7 @@ final class MinecraftBackend implements Backend {
         FutureTask<T> task = new FutureTask<>(work);
         server.execute(task);
         try { return task.get(15, TimeUnit.SECONDS); }
-        catch (TimeoutException e) { task.cancel(false); throw new PanelServer.Failure(503, "Game server timed out. Execution may have started; inspect the player and audit trail before retrying."); }
+        catch (TimeoutException e) { task.cancel(false); throw new BridgeFailure(503, "Game server timed out. Execution may have started; inspect the player and audit trail before retrying."); }
         catch (ExecutionException e) { if (e.getCause() instanceof Exception cause) throw cause; throw e; }
     }
     // Only inspect security records; avoid building full player profiles on each poll.
@@ -58,7 +58,7 @@ final class MinecraftBackend implements Backend {
             return r;
         });
     }
-    public JsonObject player(UUID id, Auth.User viewer) throws Exception { return onServer(() -> {
+    public JsonObject player(UUID id, StaffActor viewer) throws Exception { return onServer(() -> {
         JsonObject result = detail(id, viewer); result.add("storage", InventoryData.read(server, id)); result.add("location", location(id));
         // Vanilla PLAY_TIME is stored in ticks and includes offline players.
         JsonObject playtime = new JsonObject();
@@ -116,32 +116,32 @@ final class MinecraftBackend implements Backend {
         out.addProperty("available", false);
         return out;
     }
-    private JsonObject detail(UUID id, Auth.User viewer) {
+    private JsonObject detail(UUID id, StaffActor viewer) {
         JsonObject r = JsonParser.parseString(AdminGuiData.buildPlayerDetail(server, id, viewer.uuid())).getAsJsonObject();
         if (ModList.get().isLoaded("punish")) r.add("cases", PunishBridge.history(server, id));
         else r.add("cases", new JsonArray());
         return r;
     }
-    public JsonElement mutate(UUID id, Auth.User actor, String action, JsonObject b) throws Exception {
+    public JsonElement mutate(UUID id, StaffActor actor, String action, JsonObject b) throws Exception {
         return onServer(() -> {
             Permissions.mutation(actor, action, b);
             JsonObject player = detail(id, actor);
             if (action.equals("punish") || action.equals("revoke") || action.equals("remove-punishment")) {
                 if (player.get("name").getAsString().equals(id.toString())) throw new IllegalArgumentException("Unknown player: choose a known server profile");
-                if (!ModList.get().isLoaded("punish")) throw new PanelServer.Failure(409, "Punish mod is not installed");
+                if (!ModList.get().isLoaded("punish")) throw new BridgeFailure(409, "Punish mod is not installed");
                 return PunishBridge.mutate(server, id, player.get("name").getAsString(), actor, action, b);
             }
-            if (!player.get("notesAvailable").getAsBoolean()) throw new PanelServer.Failure(409, "Admin Notes mod is not installed");
-            if (action.equals("note-add")) AdminGuiData.addNote(id, actor.uuid(), actor.name(), PanelServer.string(b, "text", 4000));
+            if (!player.get("notesAvailable").getAsBoolean()) throw new BridgeFailure(409, "Admin Notes mod is not installed");
+            if (action.equals("note-add")) AdminGuiData.addNote(id, actor.uuid(), actor.name(), RequestFields.string(b, "text", 4000));
             else {
-                UUID note = UUID.fromString(PanelServer.string(b, "noteId", 36));
+                UUID note = UUID.fromString(RequestFields.string(b, "noteId", 36));
                 boolean owned = false;
                 for (JsonElement e : player.getAsJsonArray("notes")) {
                     JsonObject n = e.getAsJsonObject();
                     if (n.get("id").getAsString().equals(note.toString()) && n.get("canEdit").getAsBoolean()) owned = true;
                 }
-                if (!owned) throw new PanelServer.Failure(403, "Only the author can change a non-system note");
-                if (action.equals("note-edit")) AdminGuiData.editNote(id, note, PanelServer.string(b, "text", 4000));
+                if (!owned) throw new BridgeFailure(403, "Only the author can change a non-system note");
+                if (action.equals("note-edit")) AdminGuiData.editNote(id, note, RequestFields.string(b, "text", 4000));
                 else if (action.equals("note-remove")) AdminGuiData.removeNote(id, note);
                 else throw new IllegalArgumentException("Unknown action");
             }

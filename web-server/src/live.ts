@@ -48,7 +48,7 @@ export class Live {
         if(!player)return;
         const user=this.auth.get(token)!.user;
         if(!has(user,'tab.players'))throw new Failure(403,'Permission required: tab.players');
-        const actor={name:user.name,role:user.role,rank:user.rank,uuid:user.uuid,permissions:user.permissions||[]};
+        const actor={name:user.name,rank:user.rank,uuid:user.uuid,permissions:user.permissions||[]};
         // Author UUID alone is insufficient: role/rank/name are also part of a viewer's snapshot.
         const key='p:'+createHash('sha256').update(JSON.stringify({player,actor})).digest('hex');
         try {unplayer=this.bridge.watch(key,{target:'player',player,actor},(data,error)=>send(error?{type:'live-error',player,error}:{type:'player',player,data:filterDetail(data,user)}));}

@@ -73,7 +73,7 @@ export class Auth {
     if(member.pending===true || !Array.isArray(member.roles) || (member.user && object(member.user).id!==id)) throw new Failure(403,'Discord membership could not be verified');
     const rank=this.config.ranks.find(r=>(member.roles as unknown[]).includes(r.discordRoleId));
     if(!rank || !has(rank,'panel.access')) throw new Failure(403,'Your Discord roles do not grant panel access');
-    const user:User={name:`${username} [${id}]`,role:rank.access==='deny'?'viewer':rank.access,permissions:[...rank.permissions],rank:rank.name,uuid:this.config.mappings.get(id)||discordUuid(id)};
+    const user:User={name:`${username} [${id}]`,permissions:[...rank.permissions],rank:rank.name,uuid:this.config.mappings.get(id)||discordUuid(id)};
     // Authorization snapshot at login; tokens are discarded after the exchange.
     return {user,expires:Date.now()+Math.min(seconds,28800)*1000};
   }

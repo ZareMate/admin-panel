@@ -18,7 +18,7 @@ test('HTTP auth, CSRF, permission checks, audit, duplicate prevention, and bridg
   const players=await f.app.inject({url:'/api/players',headers:headers(f,viewer)});assert.equal(players.statusCode,200);assert.equal(players.json().players.length,2);
   await Promise.all(Array.from({length:8},()=>f.bridge.players()));assert.equal(game.messages.filter(m=>m.operation==='players').length,1);
   const response=await f.app.inject({url:'/api/players/'+playerId,headers:headers(f,viewer)});assert.equal(response.json().name,'TestPlayer');
-  const actor=game.messages.find(m=>m.operation==='player')!.actor;assert.equal(actor.role,'viewer');assert.equal(actor.hash,undefined);
+  const actor=game.messages.find(m=>m.operation==='player')!.actor;assert(actor.permissions.includes('tab.players'));assert(!actor.permissions.includes('punish.warn'));assert.equal(actor.hash,undefined);
   const mutate=(staff:typeof admin,body:Record<string,unknown>,id=randomUUID(),extra={})=>f.app.inject({method:'POST',url:'/api/players/'+playerId+'/punish',headers:{...headers(f,staff),'x-request-id':id,...extra},payload:body});
   assert.equal((await mutate(viewer,{type:'WARN'})).statusCode,403);
   assert.equal((await mutate(moderator,{type:'BAN'})).statusCode,403);
@@ -45,7 +45,7 @@ test('WebSocket rejects bad credentials and duplicate peers; disconnects fail pe
   const [,response]=await once(bad,'unexpected-response');assert.equal(response.statusCode,401);response.resume();
   bad.terminate();
   const ws=await connect(f);const duplicate=await connect(f);const [code]=await once(duplicate,'close');assert.equal(code,1008);
-  const pending=f.bridge.player(playerId,{name:'admin',role:'admin',rank:'admin',uuid:playerId});
+  const pending=f.bridge.player(playerId,{name:'admin',rank:'admin',uuid:playerId});
   const failed=assert.rejects(pending,(e:Failure)=>e.statusCode===503);
   const closed=once(ws,'close');ws.close();await failed;await closed;
   let replayed=0;const replacement=await connect(f,()=>{replayed++;});await new Promise(r=>setTimeout(r,50));assert.equal(replayed,0);

@@ -17,12 +17,12 @@ public final class NodeBridgeFixture {
                 if(large!=null)result.addProperty("large",large);
                 result.addProperty("javaBridge", true); result.addProperty("mutations", mutations); return result;
             }
-            public JsonObject player(UUID id, Auth.User user) {
+            public JsonObject player(UUID id, StaffActor user) {
                 JsonObject result = new JsonObject(); result.addProperty("uuid", id.toString());
                 result.addProperty("mutations", mutations); result.addProperty("capturedAt", System.currentTimeMillis());
                 JsonObject notes = new JsonObject(); if(large!=null)notes.addProperty("text",large); notes.addProperty("viewer", user.uuid().toString()); notes.addProperty("rank", user.rank()); notes.addProperty("mutations", mutations); JsonArray list = new JsonArray(); list.add(notes); result.add("notes", list); return result;
             }
-            public JsonElement mutate(UUID id, Auth.User user, String action, JsonObject body) {
+            public JsonElement mutate(UUID id, StaffActor user, String action, JsonObject body) {
                 if (action.equals("punish") || action.equals("revoke") || action.equals("remove-punishment")) ModerationRequest.parse(user, action, body, true, java.util.Set.of("xray"));
                 JsonObject result = new JsonObject(); result.addProperty("mutations", ++mutations);
                 result.addProperty("action", action); return result;

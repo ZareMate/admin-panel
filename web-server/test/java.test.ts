@@ -18,12 +18,12 @@ test('production Java BridgeClient connects to Fastify and executes commands wit
   const unlist=f.bridge.watch('players',{target:'players'},data=>{if(data)snapshots.push(data);});
   await waitFor(()=>snapshots.length>0);
   await new Promise(r=>setTimeout(r,1200));assert.equal(snapshots.length,1,'capture timestamps do not resend unchanged state');
-  const user={name:'Node staff',role:'admin' as const,rank:'owner',permissions:[...PERMISSIONS],uuid:discordUuid('12345678901234572')};
+  const user={name:'Node staff',rank:'owner',permissions:[...PERMISSIONS],uuid:discordUuid('12345678901234572')};
   const unprofile=f.bridge.watch('java-profile',{target:'player',player:playerId,actor:user},data=>{if(data)profiles.push(data);});
   await waitFor(()=>profiles.length>0);assert.equal(profiles[0].notes[0].viewer,user.uuid);
   const detail=await f.bridge.player(playerId,user) as any;assert.equal(detail.notes[0].viewer,user.uuid);assert.equal(detail.notes[0].rank,'owner');
   const result=await f.bridge.mutate(playerId,user,'note-add',{text:'Round trip'}) as any;assert.equal(result.mutations,1);
-  await assert.rejects(f.bridge.mutate(playerId,{...user,permissions:legacyPermissions('viewer'),role:'viewer'},'note-add',{text:'Denied'}),/Permission required/);
+  await assert.rejects(f.bridge.mutate(playerId,{...user,permissions:legacyPermissions('viewer')},'note-add',{text:'Denied'}),/Permission required/);
   assert.equal((await f.bridge.players() as any).mutations,1);
   assert.equal((await f.bridge.mutate(playerId,user,'punish',{type:'WARN',reason:'Wire contract',durationMinutes:0,silent:false}) as any).mutations,2);
   assert.equal((await f.bridge.mutate(playerId,user,'revoke',{caseId:1,reason:'Wire contract'}) as any).mutations,3);
@@ -48,7 +48,7 @@ test('large Java responses and live snapshots cross both WebSocket hops in bound
   await until(()=>f.bridge.connected);
   let gameFrames=0;for(const ws of f.app.websocketServer.clients)ws.on('message',data=>{assert(Buffer.byteLength(data.toString())<=MAX_FRAME_BYTES);gameFrames++;});
   const players=await f.bridge.players() as any;assert.equal(players.large,'😀漢字'+'x'.repeat(9*1024*1024));assert(gameFrames>1000);
-  const user={name:'Large reader',role:'viewer' as const,rank:'reader',permissions:legacyPermissions('viewer'),uuid:playerId};
+  const user={name:'Large reader',rank:'reader',permissions:legacyPermissions('viewer'),uuid:playerId};
   const profile=await f.bridge.player(playerId,user) as any;assert.equal(profile.notes[0].text,players.large);
   const staff=await login(f),receiver=new BatchReceiver();let liveList:any,liveProfile:any,browserFrames=0;
   const browser=new WebSocket(f.url.replace('http','ws')+'/api/live',{headers:{Origin:f.config.origin,Cookie:staff.cookie},maxPayload:MAX_FRAME_BYTES});

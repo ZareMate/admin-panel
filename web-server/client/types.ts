@@ -1,4 +1,4 @@
-export interface Session {name:string;role:'viewer'|'moderator'|'admin';rank:string;permissions:string[];csrf:string}
+export interface Session {name:string;rank:string;permissions:string[];csrf:string}
 export interface Player {uuid:string;name:string;online:boolean;hasDetections?:boolean}
 export interface Note {id:string;text:string;author:string;createdAt:number;canEdit:boolean;system?:boolean}
 export interface Case {id:number;caseId:string;type:string;active:boolean;until?:number;removedBy?:string;replaced?:boolean;offense?:string;primary?:boolean;ipBased?:boolean;reason:string;by:string;at:number}
@@ -18,5 +18,5 @@ export interface Detail extends Player {
 }
 export interface Players {players:Player[];serverPlayers:number;maxPlayers:number;punishAvailable:boolean}
 export interface AuditRow {at:number;actor:string;action:string;target:string;state:string;detail:unknown}
-export interface Rank {name:string;discordRoleId:string;access?:string;permissions:string[]}
+export interface Rank {name:string;discordRoleId:string;permissions:string[]}
 export type Api = <T>(path:string,body?:unknown,requestId?:string)=>Promise<T>;

@@ -23,7 +23,7 @@ test('React production build in Chromium', {timeout:90000},async()=>{
 
 test('React rank editor works for an explicitly granted custom rank', {timeout:90000},async()=>{
  const f=await fixture({discord:true});try{
-  const session=f.auth.create({name:'Permission manager',role:'viewer',rank:'security-lead',uuid:'00000000-0000-0000-0000-000000000009',permissions:['panel.access','access.manage']});
+  const session=f.auth.create({name:'Permission manager',rank:'security-lead',uuid:'00000000-0000-0000-0000-000000000009',permissions:['panel.access','access.manage']});
   const browser=spawn('python3',['test/browser.py',f.url,'discord'],{stdio:'inherit',env:{...process.env,PANEL_TEST_SESSION:session}});
   const timeout=setTimeout(()=>browser.kill('SIGKILL'),80000);
   try{const [code]=await once(browser,'exit');assert.equal(code,0,'Rank editor browser checks');}finally{clearTimeout(timeout);}

@@ -6,8 +6,7 @@ version = '2.0.0'
 group = 'com.zaremate.admin_panel'
 base { archivesName = 'admin_panel' }
 java.toolchain.languageVersion = JavaLanguageVersion.of(21)
-// Icon Exporter PNGs live in src/resources/icons and are bundled in the mod JAR.
-sourceSets.main.resources.srcDir 'src/resources'
+// Icon exports under web-server/assets/icons belong to the Node app only.
 runs {
     configureEach {
         workingDirectory project.layout.projectDirectory.dir('run').dir(name)
@@ -23,76 +22,18 @@ dependencies {
     compileOnly files(adminGuiJar, punishJar)
 }
 tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }
-tasks.register('panelTest', JavaExec) {
-    dependsOn testClasses
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'com.zaremate.admin_panel.PanelTest'
-    jvmArgs '-ea'
-}
-// This project uses an executable HTTP integration suite instead of a JUnit engine.
+// Executable Java contract tests and real Node/React integration tests replace JUnit.
 tasks.named('test') { enabled = false }
-tasks.named('check') { dependsOn 'panelTest' }
-tasks.register('browserTest', JavaExec) {
+tasks.register('bridgeTest', JavaExec) {
     dependsOn testClasses
     classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'com.zaremate.admin_panel.BrowserTest'
+    mainClass = 'com.zaremate.admin_panel.BridgeTest'
     jvmArgs '-ea'
 }
-tasks.named('check') { dependsOn 'browserTest' }
-tasks.register('discordTest', JavaExec) {
-    dependsOn testClasses
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'com.zaremate.admin_panel.DiscordTest'
-    jvmArgs '-ea'
-}
-tasks.named('check') { dependsOn 'discordTest' }
-tasks.register('iconTest', JavaExec) {
-    dependsOn testClasses
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'com.zaremate.admin_panel.ItemIconsTest'
-    jvmArgs '-ea', '-Djava.awt.headless=true'
-}
-tasks.named('check') { dependsOn 'iconTest' }
-tasks.register('discordHttpTest', JavaExec) {
-    dependsOn testClasses
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'com.zaremate.admin_panel.DiscordHttpTest'
-    jvmArgs '-ea'
-}
-tasks.named('check') { dependsOn 'discordHttpTest' }
-tasks.register('iconFallbackTest', JavaExec) {
-    dependsOn testClasses
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'com.zaremate.admin_panel.IconFallbackTest'
-    jvmArgs '--limit-modules', 'java.base,java.logging'
-}
-tasks.named('check') { dependsOn 'iconFallbackTest' }
-tasks.register('installedIconTest', JavaExec) {
-    dependsOn testClasses
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'com.zaremate.admin_panel.InstalledIconTest'
-    args providers.gradleProperty('modAssetsPath').getOrElse('run/server/mods')
-    jvmArgs '-Djava.awt.headless=true'
-}
-
-tasks.register('firstRunSetupTest', JavaExec) {
-    dependsOn testClasses
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'com.zaremate.admin_panel.FirstRunSetupTest'
-    jvmArgs '-ea'
-}
-tasks.named('check') { dependsOn 'firstRunSetupTest' }
-
-tasks.register('rankConfigEditorTest', JavaExec) {
-    dependsOn testClasses
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'com.zaremate.admin_panel.RankConfigEditorTest'
-    jvmArgs '-ea'
-}
-tasks.named('check') { dependsOn 'rankConfigEditorTest' }
+tasks.named('check') { dependsOn 'bridgeTest' }
 
 // Standalone React/TypeScript web app; no Java web-service JAR is produced.
-tasks.named('jar') { exclude 'web/**', 'icons/**' }
+tasks.named('jar') { exclude 'icons/**' }
 tasks.register('webInstall', Exec) {
     workingDir 'web-server'
     commandLine 'npm', 'ci'
@@ -104,7 +45,6 @@ tasks.register('webBuild', Exec) {
     workingDir 'web-server'
     commandLine 'npm', 'run', 'build'
     inputs.files(fileTree('web-server') { exclude 'node_modules/**', 'dist/**', 'data/**', 'public/**', '.env' })
-    inputs.files(fileTree('src/main/resources/icons'), fileTree('src/resources/icons'))
     outputs.dirs('web-server/dist', 'web-server/public/icons')
 }
 tasks.register('webTest', Exec) {
@@ -128,3 +68,23 @@ tasks.register('webDist', Zip) {
 }
 tasks.named('assemble') { dependsOn 'webDist' }
 tasks.named('check') { dependsOn 'webTest', 'webTypecheck' }
+
+// Catch stale embedded-server classes/resources accidentally returning to the deployable mod.
+tasks.register('verifyModJar') {
+    dependsOn 'jar'
+    doLast {
+        def retired = ['PanelServer', 'Auth', 'Audit', 'Config', 'DiscordApi', 'DiscordAuth',
+                       'DiscordSettings', 'HttpDiscordApi', 'FirstRunSetup', 'RankConfigEditor',
+                       'ItemIcons', 'ModAssets', 'ModelPreview', 'PngPreview', 'SkinCache']
+        def archive = tasks.named('jar').get().archiveFile.get().asFile
+        new java.util.zip.ZipFile(archive).withCloseable { zip ->
+            zip.entries().each { entry ->
+                def simple = entry.name.tokenize('/').last().split('[.$]')[0]
+                if (retired.contains(simple) || entry.name.startsWith('web/') || entry.name.startsWith('icons/') || entry.name.endsWith('Test.class') || entry.name.endsWith('Fixture.class') || entry.name == 'admin-panel-default.properties') {
+                    throw new GradleException("Unexpected legacy or test content in mod jar: ${entry.name}")
+                }
+            }
+        }
+    }
+}
+tasks.named('check') { dependsOn 'verifyModJar' }
