@@ -76,7 +76,7 @@ test('tickets include only visible matching channels and forum threads under con
  const thread={...channel,id:'thread',name:'report-20',type:ChannelType.PublicThread,parentId:'forum',isThread:()=>true,appliedTags:['open']};
  const guild={id:'12345678901234568',members:{fetchMe:async()=>{}},channels:{fetch:async()=>new Map([['1',channel],['forum',forum],['2',{...channel,id:'2',viewable:false}],['3',{...channel,id:'3',parentId:'other'}],['4',{...channel,id:'4',name:'general'}]]),fetchActiveThreads:async()=>({threads:new Map([['thread',thread]])})}} as unknown as Guild;
  const rows=await collectTickets(guild,ticketConfig({TICKET_CATEGORY_IDS:source}));
- assert.equal(rows.length,2);assert.equal(rows[0]!.category,'lost-items-or-airship');assert.deepEqual(rows[1]!.tags,['Open']);
+ assert.equal(rows.length,3);assert.equal(rows[0]!.category,'uncategorized');assert.equal(rows[1]!.category,'lost-items-or-airship');assert.deepEqual(rows[2]!.tags,['Open']);
 });
 
 test('publisher batches Unicode safely, orders snapshots, and sends an empty snapshot to clear tickets',async()=>{
@@ -85,6 +85,7 @@ test('publisher batches Unicode safely, orders snapshots, and sends an empty sna
  const fake=async(body:string)=>{assert(Buffer.byteLength(body)<=16384);calls.push(JSON.parse(body));};
  await publishTickets(config,Array.from({length:150},(_,i)=>({id:String(12345678901234567n+BigInt(i)),guildId:'12345678901234568',category:'report',name:'report-'+i,tags:['雪'.repeat(100)]})),fake);
  assert(calls.length>1);assert.equal(calls.flatMap(c=>c.tickets).length,150);
+ assert.deepEqual(calls[0].categories.at(-1),{id:'uncategorized',label:'Uncategorized'});
  calls.forEach((c,i)=>{assert.equal(c.index,i);assert.equal(c.snapshot,calls[0].snapshot);assert.equal(c.final,i===calls.length-1);});
  calls.length=0;await publishTickets(config,[],fake);assert.equal(calls.length,1);assert(calls[0].final);assert.deepEqual(calls[0].tickets,[]);
  await assert.rejects(publishTickets(config,[],async()=>{throw new Error('401');}),/401/);

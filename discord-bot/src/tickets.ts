@@ -2,6 +2,8 @@ import { WebSocket } from 'ws';
 import { ChannelType, type Guild, type GuildBasedChannel } from 'discord.js';
 export const TICKET_CATEGORIES = [{"id": "lost-items-or-airship", "label": "Lost Items or Airship"}, {"id": "other-support", "label": "Other Support"}, {"id": "cant-connect-to-the-server", "label": "Can’t Connect to the Server"}, {"id": "buy-a-shop-plot-at-spawn", "label": "Buy a Shop Plot at Spawn"}, {"id": "stealing-or-grieffing", "label": "Stealing or Grieffing"}, {"id": "player-report", "label": "Player Report"}, {"id": "report", "label": "Report"}] as const;
 
+export const UNCATEGORIZED_TICKET = {id:'uncategorized',label:'Uncategorized'} as const;
+
 export interface Ticket { id:string; name:string; category:string; guildId:string; tags:string[] }
 export interface TicketConfig { suggestionsForumId?:string; categoryIds:string[]; rules:{id:string;label:string;pattern:string}[]; url?:string; token?:string }
 export function ticketConfig(env:NodeJS.ProcessEnv=process.env):TicketConfig {
@@ -42,9 +44,9 @@ export async function collectTickets(guild:Guild,config:TicketConfig):Promise<Ti
   const parent=c.parentId?all.get(c.parentId):undefined;
   const source=c.isThread()?parent?.parentId:c.parentId;
   if(!source||!config.categoryIds.includes(source))continue;
-  const rule=config.rules.find(r=>matches(c.name,r.pattern));if(!rule)continue;
+  const rule=config.rules.find(r=>matches(c.name,r.pattern));
   const tags=c.isThread()&&parent?.type===ChannelType.GuildForum?c.appliedTags.map(id=>parent.availableTags.find(t=>t.id===id)?.name??id):[];
-  tickets.push({id:c.id,name:c.name,category:rule.id,guildId:guild.id,tags});
+  tickets.push({id:c.id,name:c.name,category:rule?.id??UNCATEGORIZED_TICKET.id,guildId:guild.id,tags});
  }
  return tickets.sort((a,b)=>a.name.localeCompare(b.name)||a.id.localeCompare(b.id));
 }
@@ -57,7 +59,7 @@ export async function publishTickets(config:TicketConfig,tickets:Ticket[],send?:
  for(const ticket of tickets){let batch=batches[batches.length-1]!;if(Buffer.byteLength(JSON.stringify([...batch,ticket]))>12000){batch=[];batches.push(batch);}batch.push(ticket);}
  const frames:string[]=[];
  for(let index=0;index<batches.length;index++){
-  const body=JSON.stringify({snapshot,index,final:index===batches.length-1,categories:config.rules.map(({id,label})=>({id,label})),tickets:batches[index]});
+  const body=JSON.stringify({snapshot,index,final:index===batches.length-1,categories:[...config.rules.map(({id,label})=>({id,label})),UNCATEGORIZED_TICKET],tickets:batches[index]});
   if(Buffer.byteLength(body)>16384)throw new Error('Ticket batch exceeds limit');
   frames.push(body);
  }

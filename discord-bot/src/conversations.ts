@@ -3,7 +3,7 @@ import { authorProfiles, profile } from './profiles.js';
 import { mentionFormatter } from './mentions.js';
 import { WebSocket } from 'ws';
 import { PermissionFlagsBits, type Guild, type Message } from 'discord.js';
-import { matches, type TicketConfig } from './tickets.js';
+import { matches, UNCATEGORIZED_TICKET, type TicketConfig } from './tickets.js';
 export async function messageView(m:Message,format:ReturnType<typeof mentionFormatter>,resolveProfile?:ReturnType<typeof authorProfiles>) {
  const embeds=[];
  for(const e of m.embeds){const fields=[];for(const f of e.fields)fields.push({rawName:f.name,rawValue:f.value,name:await format(f.name,m),value:await format(f.value,m)});embeds.push({rawTitle:e.title,rawDescription:e.description,title:await format(e.title,m),description:await format(e.description,m),fields,image:e.image?{url:e.image.proxyURL??e.image.url,name:e.title??'Embedded image',contentType:'image/*'}:undefined,thumbnail:e.thumbnail?{url:e.thumbnail.proxyURL??e.thumbnail.url,name:e.title??'Thumbnail',contentType:'image/*'}:undefined,video:e.video?{url:e.video.proxyURL??e.video.url,name:e.title??'Embedded video',contentType:'video/*'}:undefined});}
@@ -21,7 +21,7 @@ export async function conversationCommand(guild:Guild,config:TicketConfig,c:Reco
  const parent=channel.parentId?await guild.channels.fetch(channel.parentId,{force:true}):null;
  const source=channel.isThread()?parent?.parentId:channel.parentId;
  const rule=config.rules.find(r=>matches(channel.name,r.pattern));
- if(!suggestion&&(!source||!config.categoryIds.includes(source)||!rule||rule.id!==c.category))throw new Error('Channel is not an allowed ticket');
+ if(!suggestion&&(!source||!config.categoryIds.includes(source)||(rule?.id??UNCATEGORIZED_TICKET.id)!==c.category))throw new Error('Channel is not an allowed ticket');
  const me=await guild.members.fetchMe();
  if(!channel.permissionsFor(me)?.has(PermissionFlagsBits.ReadMessageHistory))throw new Error('Message history permission required');
  if(c.action==='history'){
