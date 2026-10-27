@@ -1,10 +1,10 @@
 // Shared with the React client. Authorization never derives from a rank name.
-export const PERMISSIONS = ['panel.access', 'tab.players', 'tab.overview', 'tab.cases', 'tab.notes', 'tab.security', 'tab.inventory', 'tab.enderChest', 'tab.curios', 'tab.audit', 'access.manage', 'notes.add', 'notes.edit', 'notes.remove', 'punish.warn', 'punish.kick', 'punish.mute', 'punish.ban', 'punish.offense', 'punish.remove', 'punish.revoke'] as const;
+export const PERMISSIONS = ['suggestions.reply', 'tab.todo', 'todo.create', 'todo.edit', 'todo.delete', 'tab.suggestions', 'suggestions.tags', 'tickets.reply', 'tab.tickets', 'tickets.lost-items-or-airship', 'tickets.other-support', 'tickets.cant-connect-to-the-server', 'tickets.buy-a-shop-plot-at-spawn', 'tickets.stealing-or-grieffing', 'tickets.player-report', 'tickets.report', 'panel.access', 'tab.players', 'tab.overview', 'tab.cases', 'tab.notes', 'tab.security', 'tab.inventory', 'tab.enderChest', 'tab.curios', 'tab.audit', 'access.manage', 'notes.add', 'notes.edit', 'notes.remove', 'punish.warn', 'punish.kick', 'punish.mute', 'punish.ban', 'punish.offense', 'punish.remove', 'punish.revoke'] as const;
 export type Permission = typeof PERMISSIONS[number];
 export const has = (user:{permissions?:readonly string[]}|null|undefined, permission:string) => !!user?.permissions?.includes(permission);
 export function legacyPermissions(role:string, rank=role):string[] {
   if(role==='deny')return [];
-  const read=PERMISSIONS.filter(p=>p==='panel.access'||p.startsWith('tab.')&&p!=='tab.audit');
+  const read=PERMISSIONS.filter(p=>p==='panel.access'||p.startsWith('tab.')&&p!=='tab.audit'&&p!=='tab.tickets'&&p!=='tab.todo'&&p!=='tab.suggestions');
   if(role==='viewer')return [...read];
   if(role==='moderator')return [...read,'notes.add','notes.edit','notes.remove','punish.warn','punish.kick','punish.mute'];
   if(role==='admin')return PERMISSIONS.filter(p=>p!=='access.manage'||['owner','dev'].includes(rank));
@@ -29,6 +29,22 @@ export function filterPlayers(value:unknown,user:{permissions?:readonly string[]
 }
 
 export const PERMISSION_LABELS:Record<Permission,string>={
+ 'suggestions.reply':'Reply to suggestions',
+ 'tab.todo':'To-do tab',
+ 'todo.create':'Create tasks',
+ 'todo.edit':'Edit tasks and status',
+ 'todo.delete':'Delete tasks',
+ 'tab.suggestions':'Suggestions tab',
+ 'suggestions.tags':'Apply and remove suggestion tags',
+ 'tickets.reply':'Reply to permitted tickets',
+ 'tab.tickets':'Tickets tab',
+ 'tickets.lost-items-or-airship':"Lost Items or Airship tickets",
+ 'tickets.other-support':"Other Support tickets",
+ 'tickets.cant-connect-to-the-server':"Can\u2019t Connect to the Server tickets",
+ 'tickets.buy-a-shop-plot-at-spawn':"Buy a Shop Plot at Spawn tickets",
+ 'tickets.stealing-or-grieffing':"Stealing or Grieffing tickets",
+ 'tickets.player-report':"Player Report tickets",
+ 'tickets.report':"Report tickets",
  'panel.access':'Sign in', 'tab.players':'Players tab', 'tab.overview':'Overview tab',
  'tab.cases':'Punishments tab', 'tab.notes':'Staff notes tab', 'tab.security':'Security tab',
  'tab.inventory':'Inventory tab', 'tab.enderChest':'Ender Chest tab', 'tab.curios':'Curios tab',

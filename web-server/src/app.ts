@@ -1,3 +1,6 @@
+import { Todos } from './todos.js';
+import { TicketBridge } from './ticket-bridge.js';
+import { Tickets } from './tickets.js';
 import Fastify, { type FastifyRequest } from 'fastify';
 import cookie from '@fastify/cookie';
 import websocket from '@fastify/websocket';
@@ -21,25 +24,31 @@ export async function createApp(config:Config, options:{bridge?:Bridge;fetcher?:
   const auth=new Auth(config,options.fetcher),bridge=options.bridge||new Bridge(),audit=new Audit(resolve(config.dataDir,'logs/admin-panel-audit.jsonl'));
   await audit.load();
   const images=new Images(resolve(config.dataDir,'assets'),options.bundledDir||resolve('public'),options.fetcher);await images.init();
+  const tickets=new Tickets(),ticketBridge=new TicketBridge(),todos=new Todos(resolve(config.dataDir,'todos.json'));await todos.load();
   const requests=new Map<string,number>();let savingRanks=false,iconJobs=0;
   await app.register(cookie);
   await app.register(websocket,{options:{maxPayload:65536,perMessageDeflate:false}});
   const live=new Live(bridge,auth);
-  app.addHook('preClose',async()=>{live.close();bridge.close();});
+  app.addHook('preClose',async()=>{live.close();bridge.close();ticketBridge.close();});
   const sessionCookie={path:'/',httpOnly:true,sameSite:'strict' as const,secure:config.secure,maxAge:28800};
   const oauthCookie={path:'/api/auth/discord',httpOnly:true,sameSite:'lax' as const,secure:config.secure,maxAge:300};
   const publicRoutes=new Set(['/api/login','/api/auth/method','/api/auth/discord/start','/api/auth/discord/callback']);
   app.addHook('onRequest',async(req,reply)=>{
     reply.header('Cache-Control','no-store').header('X-Content-Type-Options','nosniff').header('Referrer-Policy','no-referrer')
-      .header('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
+      .header('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://cdn.discordapp.com https://media.discordapp.net https://images-ext-1.discordapp.net https://images-ext-2.discordapp.net; media-src 'self' https://cdn.discordapp.com https://media.discordapp.net https://images-ext-1.discordapp.net https://images-ext-2.discordapp.net; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
     if(config.secure)reply.header('Strict-Transport-Security','max-age=31536000');
     if(req.host.toLowerCase()!==new URL(config.origin).host.toLowerCase())throw new Failure(403,'Unrecognized host');
     if(!['GET','POST','HEAD'].includes(req.method))throw new Failure(405,'Method not allowed');
+    const path=req.url.split('?')[0]!;
+    if(path==='/tickets-sync'||path==='/tickets-commands') {
+      if(!config.ticketSyncToken||!equal(String(req.headers.authorization||''),'Bearer '+config.ticketSyncToken))throw new Failure(401,'Ticket sync authentication rejected');
+      if(req.method!=='GET'||req.headers.upgrade?.toLowerCase()!=='websocket')throw new Failure(405,'WebSocket upgrade required');
+      return;
+    }
     if(req.method==='POST') {
       if(req.headers.origin!==config.origin)throw new Failure(403,'Origin rejected');
       if(req.headers['content-type']?.split(';')[0]?.toLowerCase()!=='application/json')throw new Failure(415,'JSON required');
     }
-    const path=req.url.split('?')[0]!;
     if(path==='/api/live' && req.headers.origin!==config.origin)throw new Failure(403,'Origin rejected');
     if(path==='/bridge') {
       if(!equal(String(req.headers.authorization||''),'Bearer '+config.bridgeToken))throw new Failure(401,'Bridge authentication rejected');
@@ -57,6 +66,79 @@ export async function createApp(config:Config, options:{bridge?:Bridge;fetcher?:
     if(status===500)req.log.error({name:err.name},'Request failed');
     reply.code(status).send({error:status===500?'Request failed. Check player history and audit before retrying.':err.message});
   });
+  app.get('/api/todos',async req=>{requirePermission(req.panelSession!.user,'tab.todo');return {tasks:todos.list()};});
+  app.post('/api/todos',async req=>{const user=req.panelSession!.user;requirePermission(user,'tab.todo');requirePermission(user,'todo.create');const result=await todos.mutate(user.name,req.body);await audit.write(user.name,'todo-create','','success',result);return result;});
+  app.post<{Params:{id:string;action:string}}>('/api/todos/:id/:action',async req=>{
+    const user=req.panelSession!.user,action=req.params.action;if(!['edit','delete'].includes(action))throw new Failure(404,'Not found');requirePermission(user,'tab.todo');requirePermission(user,'todo.'+action);
+    const result=await todos.mutate(user.name,req.body,uuid(req.params.id),action==='delete');await audit.write(user.name,'todo-'+action,req.params.id,'success',result);return result;
+  });
+  app.get<{Querystring:{archived?:string;cursor?:string;tags?:string;untagged?:string}}>('/api/suggestions',async req=>{
+    requirePermission(req.panelSession!.user,'tab.suggestions');
+    if(req.query.archived!==undefined&&!['true','false'].includes(req.query.archived))throw new Failure(400,'Invalid archive filter');
+    if(req.query.cursor!==undefined&&!/^[0-9]{1,16}$/.test(req.query.cursor))throw new Failure(400,'Invalid cursor');
+    if(req.query.untagged!==undefined&&!['true','false'].includes(req.query.untagged))throw new Failure(400,'Invalid untagged filter');
+    const tags=req.query.tags?req.query.tags.split(','):[];
+    if(req.query.untagged==='true'&&tags.length>0||tags.length>20||!tags.every(id=>/^[1-9][0-9]{16,19}$/.test(id))||new Set(tags).size!==tags.length)throw new Failure(400,'Invalid tag filters');
+    const result=await ticketBridge.request({action:'suggestions-list',archived:req.query.archived==='true',cursor:req.query.cursor,tags,untagged:req.query.untagged==='true'}) as {messages:unknown[];hasMore:boolean};
+    return {meta:result.messages[0],threads:result.messages.slice(1),hasMore:result.hasMore};
+  });
+  app.get<{Params:{id:string};Querystring:{before?:string}}>('/api/suggestions/:id/messages',async req=>{
+    requirePermission(req.panelSession!.user,'tab.suggestions');
+    if(!/^[1-9][0-9]{16,19}$/.test(req.params.id)||req.query.before!==undefined&&!/^[1-9][0-9]{16,19}$/.test(req.query.before))throw new Failure(400,'Invalid thread or message ID');
+    return ticketBridge.request({action:'suggestions-history',channel:req.params.id,before:req.query.before});
+  });
+  app.post<{Params:{id:string}}>('/api/suggestions/:id/tags',async req=>{
+    const user=req.panelSession!.user;requirePermission(user,'tab.suggestions');requirePermission(user,'suggestions.tags');
+    const b=object(req.body),valid=(v:unknown)=>Array.isArray(v)&&v.length<=5&&v.every(id=>typeof id==='string'&&/^[1-9][0-9]{16,19}$/.test(id))&&new Set(v).size===v.length;
+    if(!/^[1-9][0-9]{16,19}$/.test(req.params.id)||!valid(b.tags)||!valid(b.expected))throw new Failure(400,'Provide up to five unique tag IDs and current tags');
+    await audit.write(user.name,'suggestion-tags',req.params.id,'requested',{tags:b.tags});
+    try{const result=await ticketBridge.request({action:'suggestions-tags',channel:req.params.id,tags:b.tags,expected:b.expected,actor:user.name});await audit.write(user.name,'suggestion-tags',req.params.id,'success',{tags:b.tags});return result;}
+    catch(error){await audit.write(user.name,'suggestion-tags',req.params.id,'failed-or-unconfirmed',{});throw error;}
+  });
+  app.get('/tickets-commands',{websocket:true},socket=>ticketBridge.attach(socket));
+  app.get<{Params:{id:string};Querystring:{before?:string}}>('/api/tickets/:id/messages',async req=>{
+    const ticket=tickets.authorize(req.panelSession!.user,req.params.id),before=req.query.before;
+    if(before!==undefined&&!/^[1-9][0-9]{16,19}$/.test(before))throw new Failure(400,'Invalid message cursor');
+    return ticketBridge.request({action:'history',channel:ticket.id,category:ticket.category,before});
+  });
+  app.post<{Params:{id:string}}>('/api/tickets/:id/reply',async req=>{
+    const {user,expires}=req.panelSession!,ticket=tickets.authorize(user,req.params.id);
+    requirePermission(user,'tickets.reply');
+    const content=text(object(req.body).content,1800,'Reply'),requestId=req.headers['x-request-id'];
+    if(typeof requestId!=='string'||! /^[a-f0-9-]{36}$/.test(requestId))throw new Failure(400,'Request ID required');
+    for(const [key,expiry] of requests)if(expiry<=Date.now())requests.delete(key);
+    const key='ticket:'+req.cookies.panel_session+':'+requestId;
+    if(requests.has(key))throw new Failure(409,'Reply already submitted. Refresh the conversation before retrying.');
+    if(requests.size>=10000)throw new Failure(503,'Request capacity reached');requests.set(key,expires);
+    await audit.write(user.name,'ticket-reply',ticket.id,'requested',{requestId});
+    try{const result=await ticketBridge.request({action:'reply',channel:ticket.id,category:ticket.category,content,actor:user.name,rank:user.rank,requestId});await audit.write(user.name,'ticket-reply',ticket.id,'success',{requestId});return result;}
+    catch(error){await audit.write(user.name,'ticket-reply',ticket.id,'failed-or-unconfirmed',{requestId});throw error;}
+  });
+  app.post<{Params:{id:string}}>('/api/suggestions/:id/reply',async req=>{
+    const {user,expires}=req.panelSession!;requirePermission(user,'tab.suggestions');
+    if(!/^[1-9][0-9]{16,19}$/.test(req.params.id))throw new Failure(400,'Invalid thread ID');
+    const ticket={id:req.params.id};
+    requirePermission(user,'suggestions.reply');
+    const content=text(object(req.body).content,1800,'Reply'),requestId=req.headers['x-request-id'];
+    if(typeof requestId!=='string'||! /^[a-f0-9-]{36}$/.test(requestId))throw new Failure(400,'Request ID required');
+    for(const [key,expiry] of requests)if(expiry<=Date.now())requests.delete(key);
+    const key='suggestion:'+req.cookies.panel_session+':'+requestId;
+    if(requests.has(key))throw new Failure(409,'Reply already submitted. Refresh the conversation before retrying.');
+    if(requests.size>=10000)throw new Failure(503,'Request capacity reached');requests.set(key,expires);
+    await audit.write(user.name,'suggestion-reply',ticket.id,'requested',{requestId});
+    try{const result=await ticketBridge.request({action:'suggestions-reply',channel:ticket.id,content,actor:user.name,rank:user.rank,requestId});await audit.write(user.name,'suggestion-reply',ticket.id,'success',{requestId});return result;}
+    catch(error){await audit.write(user.name,'suggestion-reply',ticket.id,'failed-or-unconfirmed',{requestId});throw error;}
+  });
+  app.get('/tickets-sync',{websocket:true},socket=>{
+    socket.on('message',(data,binary)=>{
+      try {
+        if(binary||Buffer.byteLength(data.toString())>16384)throw new Error('Invalid frame');
+        const batch=JSON.parse(data.toString());tickets.accept(batch);
+        socket.send(JSON.stringify({ok:true,snapshot:batch.snapshot,index:batch.index}));
+      }catch{socket.close(1008,'Invalid ticket batch');}
+    });
+  });
+  app.get<{Querystring:{category?:string;offset?:string}}>('/api/tickets',async req=>tickets.list(req.panelSession!.user,req.query.category,req.query.offset));
   app.get('/bridge',{websocket:true},socket=>bridge.attach(socket));
   app.get('/api/live',{websocket:true},(socket,req)=>live.attach(socket,req.cookies.panel_session||''));
   app.get('/api/auth/method',async()=>({mode:config.mode}));

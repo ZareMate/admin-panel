@@ -1,5 +1,8 @@
+import { Todos } from './Todos';
+import { Suggestions } from './Suggestions';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Api, Session, Players, Detail, AuditRow, Rank } from './types';
+import { Tickets } from './Tickets';
 import { PlayerDetail, type Action } from './PlayerDetail';
 import { has, PERMISSIONS, PERMISSION_LABELS } from '../src/permissions';
 import { BatchReceiver } from '../src/batches';
@@ -83,11 +86,13 @@ export function App() {
     return()=>{stopped=true;clearTimeout(retry);liveHealthy.current=false;liveSocket.current?.close();liveSocket.current=null;};
   },[signedIn,session?.csrf]);
   useEffect(()=>{const socket=liveSocket.current;if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'select',player:view==='players'?selected:null}));},[selected,view]);
+  const canTodo=has(session,'tab.todo'),canSuggestions=has(session,'tab.suggestions');
+  const canTickets=has(session,'tab.tickets');
   const admin=has(session,'tab.audit'),manager=mode==='discord'&&has(session,'access.manage'),canPlayers=has(session,'tab.players');
-  useEffect(()=>{if(!signedIn)return;if(view==='audit'&&!admin||view==='access'&&!manager||view==='players'&&!canPlayers){setView(canPlayers?'players':admin?'audit':manager?'access':'none');return;}
+  useEffect(()=>{if(!signedIn)return;if(view==='todo'&&!canTodo||view==='suggestions'&&!canSuggestions||view==='tickets'&&!canTickets||view==='audit'&&!admin||view==='access'&&!manager||view==='players'&&!canPlayers){setView(canPlayers?'players':canTickets?'tickets':canTodo?'todo':canSuggestions?'suggestions':admin?'audit':manager?'access':'none');return;}
     if(view==='audit')void api<AuditRow[]>('/audit').then(setAudit).catch(e=>setError(e.message));
     if(view==='access')void api<{ranks:Rank[]}>('/access/ranks').then(r=>setRanks(r.ranks)).catch(e=>setError(e.message));
-  },[view,api,signedIn,admin,manager,canPlayers]);
+  },[view,api,signedIn,admin,manager,canPlayers,canTickets,canTodo,canSuggestions]);
   if(!booted)return <div className="loading">Connecting to Admin Panel…</div>;
   if(!session)return <section id="login" className="login-screen"><div className="login-card"><div className="brand-mark">A</div><h1>Admin Panel</h1><p className="muted">Sign in to manage your Minecraft server.</p>
     {mode==='discord'?<a className="primary" id="discord-login" href="/api/auth/discord/start">Continue with Discord</a>:mode==='local'?<form id="login-form" onSubmit={async e=>{e.preventDefault();const data=Object.fromEntries(new FormData(e.currentTarget));setBusy(true);setLoginError('');try{await api('/login',data);setSession(await api<Session>('/session'));}catch(e){setLoginError((e as Error).message);}finally{setBusy(false);}}}>
@@ -98,12 +103,18 @@ export function App() {
   const changeView=(value:string)=>{setView(value);setError('');};
   return <div id="app"><aside className="sidebar"><div className="brand"><span className="brand-mark">A</span>Admin Panel</div><nav>
     {canPlayers&&<button className={'nav-button '+(view==='players'?'active':'')} onClick={()=>changeView('players')}>Players <span className="count">{players.players.length}</span></button>}
+    {canTickets&&<button id="tickets-nav" className={'nav-button '+(view==='tickets'?'active':'')} onClick={()=>changeView('tickets')}>Tickets</button>}
+    {canTodo&&<button id="todo-nav" className={'nav-button '+(view==='todo'?'active':'')} onClick={()=>changeView('todo')}>To-do</button>}
+    {canSuggestions&&<button id="suggestions-nav" className={'nav-button '+(view==='suggestions'?'active':'')} onClick={()=>changeView('suggestions')}>Suggestions</button>}
     {admin&&<button id="audit-nav" className={'nav-button '+(view==='audit'?'active':'')} onClick={()=>changeView('audit')}>Audit log</button>}
     {manager&&<button id="access-nav" className={'nav-button '+(view==='access'?'active':'')} onClick={()=>changeView('access')}>Rank access</button>}
   </nav><div className="sidebar-bottom"><div className="connection"><i className={connected?'':'stale'}/>{connected?'Server connected':'Server disconnected'}</div><div className="staff"><span className="avatar staff-avatar">{displayName(session.name).slice(0,2)}</span><div><strong title={session.name}>{displayName(session.name)}</strong><small>{session.rank}</small></div><button id="logout" className="icon-button" aria-label="Sign out" onClick={async()=>{try{await api('/logout',{});setSession(null);setDetail(null);setAction(null);setSelected(null);setFilter('all');setQuery('');setView('players');setPlayers({players:[],serverPlayers:0,maxPlayers:0,punishAvailable:false});detailVersion.current++;}catch(e){report(e);}}}>↪</button></div></div></aside>
     <main><header className="topbar"><strong>Minecraft administration</strong><span>{updated?'Updated '+new Date(updated).toLocaleTimeString():'Waiting for server'}</span></header><div className="page">
-      <div className="page-heading"><div><h1>{view==='players'?'Player directory':view==='audit'?'Audit log':view==='access'?'Discord rank access':'Panel'}</h1><p className="muted">{view==='players'?'Online and known offline players':'Staff administration'}</p></div><button id="refresh" className="secondary" onClick={()=>{void refresh();if(view==='audit')void api<AuditRow[]>('/audit').then(setAudit).catch(report);}}>Refresh</button></div>
+      <div className="page-heading"><div><h1>{view==='players'?'Player directory':view==='audit'?'Audit log':view==='access'?'Discord rank access':view==='tickets'?'Tickets':view==='todo'?'Developer to-do':view==='suggestions'?'Suggestions':'Panel'}</h1><p className="muted">{view==='players'?'Online and known offline players':'Staff administration'}</p></div><button id="refresh" className="secondary" onClick={()=>{void refresh();if(view==='audit')void api<AuditRow[]>('/audit').then(setAudit).catch(report);}}>Refresh</button></div>
       {error&&<p id="page-error" className="banner error" role="alert">{error}</p>}
+      {view==='tickets'&&canTickets&&<Tickets key={session.csrf} api={api} canReply={has(session,'tickets.reply')}/>}
+      {view==='todo'&&canTodo&&<Todos api={api} session={session}/>}
+      {view==='suggestions'&&canSuggestions&&<Suggestions key={session.csrf} api={api} session={session}/>}
       {view==='none'&&<p className="notice">Your rank has no permitted tabs. Contact someone who manages panel permissions.</p>}
       {view==='players'&&<><div className="stats"><article><span>Known players</span><strong>{players.players.length}</strong></article><article><span>Online</span><strong>{players.serverPlayers}</strong><small>of {players.maxPlayers} slots</small></article><article><span>Punish</span><strong className="stat-text">{players.punishAvailable?'Connected':'Unavailable'}</strong></article></div>
       <div className="directory"><section className="card"><div className="section-header"><h2>Players</h2><span className="pill">{filtered.length}</span></div><label className="search-box"><input id="search" aria-label="Search players" placeholder="Search name or UUID…" value={query} onChange={e=>setQuery(e.target.value)}/></label><div className="filter-tabs">{['all','online','offline'].map(f=><button key={f} data-filter={f} className={filter===f?'selected':''} onClick={()=>setFilter(f)}>{f[0]!.toUpperCase()+f.slice(1)}</button>)}</div><div id="player-rows" className="player-rows">{filtered.map(p=><button key={p.uuid} className={'player-row '+(selected===p.uuid?'selected':'')} data-player={p.uuid} aria-pressed={selected===p.uuid} onClick={()=>{setAction(null);void loadPlayer(p.uuid,true).catch(report);}}><Avatar name={p.name}/><span><strong className={p.hasDetections?'detected-name':''}>{p.name}</strong><small className={p.online?'online':''}>{p.online?'● Online':'Offline'}</small></span><span className="arrow">›</span></button>)}{!filtered.length&&<p className="empty">No players found</p>}</div></section>

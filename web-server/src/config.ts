@@ -8,6 +8,7 @@ export function permissions(value:unknown):string[] {
 }
 export interface Rank { name: string; discordRoleId: string; permissions:string[] }
 export interface Config {
+  ticketSyncToken?:string;
   origin: string; bind: string; port: number; secure: boolean; bridgeToken: string;
   mode: 'local' | 'discord'; users: Map<string, User>; ranks: Rank[];
   clientId: string; clientSecret: string; guildId: string; mappings: Map<string, string>;
@@ -48,6 +49,8 @@ export function validateRanks(value: unknown, requireManager = true): Rank[] {
   return ranks;
 }
 export async function loadConfig(env = process.env): Promise<Config> {
+  const ticketSyncToken=env.TICKET_SYNC_TOKEN?.trim();
+  if(ticketSyncToken&&!/^[A-Za-z0-9_-]{43,128}$/.test(ticketSyncToken))throw new Error('Invalid TICKET_SYNC_TOKEN');
   const dataDir = resolve(env.DATA_DIR || 'data'), path = resolve(env.PANEL_CONFIG || `${dataDir}/config/admin-panel.properties`);
   const props = parseProperties(await readFile(path, 'utf8'));
   if (props.get('enabled') !== 'true') throw new Error('Set enabled=true in ' + path);
@@ -76,7 +79,7 @@ export async function loadConfig(env = process.env): Promise<Config> {
     snowflake(clientId); snowflake(guildId); if (!clientSecret) throw new Error('Discord client secret required');
     ranks = validateRanks((props.get('discord.rank-order') || '').split(',').map(name => ({name:name.trim(),discordRoleId:props.get(`discord.rank.${name.trim()}.role-id`),access:props.get(`discord.rank.${name.trim()}.access`),permissions:props.has(`discord.rank.${name.trim()}.permissions`)?props.get(`discord.rank.${name.trim()}.permissions`)!.split(',').map(s=>s.trim()).filter(Boolean):undefined})),false);
   } else if (!users.size) throw new Error('At least one local staff account is required');
-  return {origin,bind:env.HOST || props.get('bind') || '0.0.0.0',port,secure:url.protocol==='https:',bridgeToken,mode,users,ranks,clientId,clientSecret,guildId,mappings,path,dataDir,props,
+  return {ticketSyncToken,origin,bind:env.HOST || props.get('bind') || '0.0.0.0',port,secure:url.protocol==='https:',bridgeToken,mode,users,ranks,clientId,clientSecret,guildId,mappings,path,dataDir,props,
     trustedProxies:(env.TRUSTED_PROXIES || '').split(',').map(s=>s.trim()).filter(Boolean)};
 }
 export async function saveRanks(config: Config, value: unknown) {

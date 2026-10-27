@@ -138,3 +138,53 @@ Node and the browser expose a snapshot only after every chunk is received in ord
 There is a **32 MiB total UTF-8 limit per assembled message** and a 30-second transfer deadline. These bounds prevent unbounded buffering; exceeding them produces an error or disconnect instead of an encoding exception. Existing command deadlines still apply. Mutation requests remain small and retain their existing validation limits. HTTP refresh responses use normal HTTP JSON after bridge reassembly; they are not Minecraft string-codec packets.
 
 Deploy the updated mod and Node service together and reload browser tabs to load the matching batch receiver.
+
+## Discord tickets
+
+The optional [Discord bot](../discord-bot/README.md#ticket-categories-and-panel-sync) sends channel metadata to `/tickets-sync` using its own `TICKET_SYNC_TOKEN` (set the same secret in both services). Minecraft is not involved. The endpoint is disabled until this secret is configured; it does not use staff cookies or the Minecraft bridge token.
+
+Grant `tab.tickets` in **Rank access**, plus each allowed category permission:
+
+- `tickets.lost-items-or-airship`
+- `tickets.other-support`
+- `tickets.cant-connect-to-the-server`
+- `tickets.buy-a-shop-plot-at-spawn`
+- `tickets.stealing-or-grieffing`
+- `tickets.player-report`
+- `tickets.report`
+
+Both grants are required. The API filters category labels and records before returning them; direct requests to forbidden categories return 403. Existing explicit ranks receive no new permissions automatically. As with other rank changes, restart the web service and sign in again to apply grants.
+
+The Tickets inbox displays channel names, forum tags, and links to Discord, with 50 tickets per page and automatic refresh every 15 seconds. Discord still enforces channel access when opening those links. Ticket conversations support reading and replying; closing tickets is not implemented. See the bot README for source category IDs and name-pattern overrides. No received snapshot means a waiting notice; stale snapshots are visibly marked. Restarting the web service clears its in-memory snapshot until the next bot sync.
+
+### Ticket conversations
+
+Select a ticket in the inbox to read its conversation, text embeds and inline image/video/audio attachments. History loads in pages of 25; “Load earlier messages” retrieves older pages. The open conversation refreshes every 10 seconds. Text is rendered without raw HTML. Other attachment links open separately; uploads are not implemented.
+
+The existing ticket tab and category grants allow reading. Grant the additional **`tickets.reply`** permission to allow responding within those permitted categories. The API enforces both grants, CSRF protection and request deduplication. Staff replies are attributed, mention pings are disabled, and the audit log records requested/successful/unconfirmed sends. If a connection fails during a send, inspect the refreshed conversation before retrying; the draft remains in the editor and the request is not replayed automatically.
+
+Restart both services after updating. Enable the bot's **Message Content Intent** and the Discord permissions described in the bot README. Both `/tickets-sync` and `/tickets-commands` must accept WebSocket upgrades. A disconnected bot shows an error in the conversation while the existing ticket directory remains available.
+
+Ticket media displays inline: images/GIFs open full size when clicked, and video/audio attachments have native playback controls. Spoiler attachments require a click to reveal. Previews load only from Discord CDN/media hosts; other files remain links. Signed attachment URLs are refreshed when message history refreshes. Unsupported browser codecs or unavailable files fall back to a link. Media is loaded directly from Discord, not streamed through Minecraft or the panel server; there is no autoplay. External service players (such as YouTube/Spotify iframes) and uploading attachments are not implemented.
+
+Ticket authors use their server nickname and server-profile avatar when available, falling back to their Discord display name and global/default avatar. Hover over the author name to see the account username. Missing or failed avatar images display initials. Webhook authors retain their own profile identity.
+
+Ticket text supports Discord-style bold, italics, underline, strikethrough, spoilers, inline/fenced code, headings, quotes, lists, subtext and HTTP(S) links. User/role mentions appear as highlighted badges with resolved names. Names are rendered literally, code blocks do not format mentions, and raw HTML is never executed. This renderer does not implement Discord interactive components or custom emoji/sticker rendering.
+
+## Developer to-do and Discord suggestions
+
+**To-do** is a persistent developer board for fixes and features. Tasks have a title, details, assignee, priority and status (To do / In progress / Done). Search filters the board. Data lives in `DATA_DIR/todos.json`; include it in backups and mount `DATA_DIR` persistently in containers. Saves are atomic, with version checks to reject stale concurrent edits. Run one web process against this data directory. The board supports up to 2,000 tasks.
+
+Grant `tab.todo` plus the required `todo.create`, `todo.edit`, and/or `todo.delete` permissions to your developer ranks in Rank access. There is no hardcoded `dev` rank name. Read-only users need just `tab.todo`. Refresh tasks to see other staff's changes; a conflict requires refreshing and reopening the task before saving.
+
+**Suggestions** displays active and archived threads from the forum set by `SUGGESTIONS_FORUM_ID` in `discord-bot/.env`. Use the forum channel ID, not a category ID. The existing `TICKET_SYNC_URL` / `TICKET_SYNC_TOKEN` WebSocket connection carries suggestions as well. Each page has at most 24 threads plus forum metadata; conversations use the existing bounded message transport.
+
+Grant `tab.suggestions` to read suggestions and `suggestions.tags` to apply/remove the forum's existing tags (up to five per thread). This edits applied tags, not the forum's tag definitions. Tags are checked against the configured forum and current thread tags before saving. Archived/locked threads are readable but cannot be retagged here; reopen them in Discord first. The bot needs View Channel, Read Message History and Manage Threads for tag edits. Tag operations are audited. Grant `suggestions.reply` alongside `tab.suggestions` to respond from the panel. Replies use the same server-nickname/rank signature, disabled mention pings, CSRF checks, duplicate-send protection and audit logging as ticket replies. Archived or locked threads must be reopened in Discord first.
+
+“Create task” links a suggestion to the To-do board and requires both `tab.todo` and `todo.create`. Duplicate imports of the same suggestion are rejected. All new permissions appear in Rank access; existing explicit grants are unchanged. Restart both services after deploying, and restart the web service/sign in again after changing rank permissions.
+
+Tasks can be dragged between status columns by users with `todo.edit`. A status dropdown on each card provides the same action for keyboard/touch users. Moves save immediately with the existing version check; failed moves keep the original position. Dragging is disabled while saving or editing a task.
+
+Suggestions use compact rows with name search on the current page and multi-select tag filters (all selected tags must match). Active and archived suggestions are filtered and sorted by latest message time, newest first, before pagination. Archived listings are cached for 30 seconds; scans exceeding 10,000 entries or the time budget return an error instead of a partially sorted list. Filters persist when switching Active/Archived; Clear filters resets them.
+
+Suggestion pages are cached in the current signed-in view for 30 seconds (up to 30 page/filter combinations). Returning to a fresh cached page is instant. While uncached or expired results load, the previous list and filter controls stay visible with an updating status; stale rows and pagination cannot be activated. Refresh suggestions and successful tag edits invalidate the cache. Leaving the view or signing out discards it.

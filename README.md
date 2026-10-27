@@ -160,3 +160,7 @@ All mutation checks run server-side. Game/mod API access runs on the Minecraft s
 The retired embedded Java server, setup pages, image renderer and their duplicate test suites have been removed. Web authentication, assets and UI are tested against the Node/React implementation. Existing properties/account migration remains supported by Node; the local account generator in `tools/create-user.py` is still used.
 
 Tests use temporary data and fake game/Discord services. They do not perform live Discord authorization or verify third-party mod enforcement on an installed Minecraft server.
+
+## Standalone Discord bot
+
+The optional [Discord bot](discord-bot/README.md) runs separately from Minecraft and Node hosting. Set its own bot token and guild ID to log in and print visible channels to its console. It can also categorize ticket channels and sync them to the permission-controlled Tickets tab; see its README for setup.

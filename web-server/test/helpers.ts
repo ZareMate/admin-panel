@@ -66,3 +66,10 @@ export function gameFixture() {
     if(request.operation==='watch'||request.operation==='mutate')publish();
   }};
 }
+
+export async function ticketPush(f:Fixture,payload:unknown,secret=f.config.ticketSyncToken) {
+ const socket=new WebSocket(f.url.replace('http','ws')+'/tickets-sync',{headers:{Authorization:'Bearer '+secret}});
+ socket.on('error',()=>{});
+ try {await once(socket,'open');const response=once(socket,'message');socket.send(JSON.stringify(payload));const [data]=await response;return JSON.parse(data.toString());}
+ finally{socket.close();}
+}
