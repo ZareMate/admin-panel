@@ -24,6 +24,18 @@ test('every category requires its own permission and the parent tab; pagination 
  assert.deepEqual(store.list(user,undefined,0).categories,[TICKET_CATEGORIES[0]]);
  assert.equal(store.list({permissions:['tab.tickets']},undefined,0).total,0);
 });
+test('unmatched tickets appear only under Uncategorized for authorized staff',()=>{
+ const store=new Tickets();const unmatched={...row,id:'12345678901234569',name:'help-123',category:'uncategorized'};
+ store.accept(batch([row,unmatched]));
+ assert.equal(store.list(user,'lost-items-or-airship',0).total,1);
+ assert.throws(()=>store.list(user,'uncategorized',0),/permission/);
+ const staff={permissions:['tab.tickets','tickets.uncategorized']};
+ assert.deepEqual(store.list(staff,undefined,0).categories,[{id:'uncategorized',label:'Uncategorized'}]);
+ assert.deepEqual(store.list(staff,'uncategorized',0).tickets,[unmatched]);
+ assert.equal(store.authorize(staff,unmatched.id).category,'uncategorized');
+ assert.throws(()=>store.authorize(user,unmatched.id),/denied/);
+});
+
 test('bot batches reach authenticated panel endpoint and cannot bypass staff category authorization',async()=>{
  const f=await fixture();try{
   f.config.ticketSyncToken='a'.repeat(43);
