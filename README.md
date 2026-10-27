@@ -164,3 +164,7 @@ Tests use temporary data and fake game/Discord services. They do not perform liv
 ## Standalone Discord bot
 
 The optional [Discord bot](discord-bot/README.md) runs separately from Minecraft and Node hosting. Set its own bot token and guild ID to log in and print visible channels to its console. It can also categorize ticket channels and sync them to the permission-controlled Tickets tab; see its README for setup.
+
+To start both services in a detached tmux session, run `./start.sh` from this checkout (or use its absolute path). It creates three panes: web server, interactive shell, and Discord bot. Attach with `tmux attach -t admin-panel`. Repeated runs leave an existing session alone; exited services leave a shell open for inspecting errors.
+
+Install tmux and Node.js 22.12+, configure each service's `.env`, and run `npm ci` and `npm run build` in both `web-server/` and `discord-bot/` first. The script uses its own directory as the project path and runs as `zaremate`; edit `RUN_AS` if needed. Root launches switch to that user with `runuser`. For cron, use the absolute script path and ensure Node/npm and tmux are on the cron `PATH` (shell-based Node version managers are not loaded automatically).
