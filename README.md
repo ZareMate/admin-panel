@@ -8,8 +8,8 @@ The hosting app is **Fastify + TypeScript**, with a **React + TypeScript** front
 
 `gradle build` produces:
 
-- `build/libs/admin_panel-2.0.0.jar` for Minecraft.
-- `build/distributions/admin_panel-2.0.0-web.zip` for Node hosting. Unpack it and run `npm ci --omit=dev`, `npm run setup`, then `npm start` after configuring it.
+- `build/libs/admin_panel-2.1.0.jar` for Minecraft.
+- `build/distributions/admin_panel-2.1.0-web.zip` for Node hosting. Unpack it and run `npm ci --omit=dev`, `npm run setup`, then `npm start` after configuring it.
 
 For source development: `cd web-server`, `npm ci`, `npm run build`, `npm run setup`, then `npm start`. Node.js 22.12+ is required. Configuration and persistent audit data live on the web host. Existing properties files, account hashes, Discord UUID mappings, and audit history can be copied across.
 
@@ -68,11 +68,11 @@ To build from another checkout:
 gradle build -PadminGuiJar=/absolute/path/admin_gui-2.0.0.jar -PpunishJar=/absolute/path/punish-1.0.0.jar
 ```
 
-Both jars are required at compile time and are **not bundled**. Output: `build/libs/admin_panel-2.0.0.jar`. The default build targets Admin GUI 2.0.0 and the Punish API including `PunishService.removeOffense`.
+Both jars are required at compile time and are **not bundled**. Output: `build/libs/admin_panel-2.1.0.jar`. The default build targets Admin GUI 2.0.0 and the Punish API including `PunishService.removeOffense`.
 
 ## Install and configure Discord login
 
-1. Replace the old panel jar in the dedicated server’s `mods/` folder with `admin_panel-2.0.0.jar`. Keep Admin GUI and the desired integration mods installed; remove older panel jars.
+1. Replace the old panel jar in the dedicated server’s `mods/` folder with `admin_panel-2.1.0.jar`. Keep Admin GUI and the desired integration mods installed; remove older panel jars.
 2. Create/select an application in the [Discord Developer Portal](https://discord.com/developers/applications). Copy its OAuth2 **client ID** and **client secret** into the server configuration. A bot token is not needed.
 3. Register the **exact** OAuth2 redirect URI `<origin>/api/auth/discord/callback`. For the current LAN origin this is `http://10.0.0.1:8080/api/auth/discord/callback`. If Discord does not accept your chosen HTTP redirect, use the HTTPS proxy setup in the Node deployment guide and register that HTTPS origin instead.
 4. Merge the settings below into `config/admin-panel.properties`, set `enabled=true` on the web host and restart the Node service. The browser shows **Continue with Discord**.
@@ -167,7 +167,7 @@ The optional [Discord bot](discord-bot/README.md) runs separately from Minecraft
 
 To start both services in a detached tmux session, run `./start.sh` from this checkout (or use its absolute path). It creates three panes: web server, interactive shell, and Discord bot. Attach with `tmux attach -t admin-panel`. Repeated runs leave an existing session alone; exited services leave a shell open for inspecting errors.
 
-Install tmux and Node.js 22.12+, configure each service's `.env`, and run `npm ci` and `npm run build` in both `web-server/` and `discord-bot/` first. The script uses its own directory as the project path and runs as `zaremate`; edit `RUN_AS` if needed. Root launches switch to that user with `runuser`. For cron, use the absolute script path and ensure Node/npm and tmux are on the cron `PATH` (shell-based Node version managers are not loaded automatically).
+Install tmux and Node.js 22.12+, configure each service's `.env`, then run `./build-services.sh` to run `npm ci` and `npm run build` in both `web-server/` and `discord-bot/`. The script works from any current directory and stops if either install or build fails. The script uses its own directory as the project path and runs as `zaremate`; edit `RUN_AS` if needed. Root launches switch to that user with `runuser`. For cron, use the absolute script path and ensure Node/npm and tmux are on the cron `PATH` (shell-based Node version managers are not loaded automatically).
 
 
 ### Bridge threading
@@ -192,3 +192,13 @@ started mutations cannot be rolled back automatically.
 
 The web service already performs its HTTP/database work outside Minecraft. These
 changes affect the Java bridge; deploy the rebuilt mod and restart Minecraft.
+
+## TSA configuration
+
+The TSA configuration tab uses TSA’s asynchronous settings management APIs. Install the current TSA build on the Minecraft server. Grant `tab.tsaConfig` to view settings and `tsa.configure` to save them; editing also requires the tab permission. Every supported common setting is exposed with typed controls. Saves persist immediately; refresh to check the result after a timeout. Saved webhook URLs are never returned to the browser or written to the panel audit log; staff with edit permission may replace or clear them. API waits run on the bridge worker. Older or missing TSA builds show an unavailable message.
+
+The TSA tab opens with editable lists: allowed hashes, blacklisted hashes, enforcement hashes, allowed filenames. Grant `tsa.lists.edit` alongside `tab.tsaConfig` for list changes; `tsa.configure` separately controls general settings. Add and remove individual entries with searchable, paginated results. Lists stay independent. Card labels resolve filenames from TSA’s persistent hash history in the background. The panel does not edit generated-hash history. Filename detection may add a removed blacklist hash again; allow that hash for a permanent exemption.
+
+TSA lists use a three-column board: Blacklist, Allow list, and Unlisted. Drag hashes between all three columns or use the card buttons. Cards show all recorded filenames above muted hashes. Unlisted cards come from TSA’s cached inventory API, grouped by hash; filename lookup only supplies labels for classified hashes. Dragging to Unlisted removes allowed, blacklisted, and enforcement memberships. Moving to Allow list also disables per-hash enforcement. Moving from Allow list to Blacklist clears enforcement before removing the allowance, leaving punishment disabled until explicitly enabled. Moving to Unlisted clears enforcement and blacklist before removing the allowance. Allow list takes precedence when categorizing overlapping hashes: an allowed hash appears only in Allow list even if its blacklist or enforcement memberships remain. Enforcement-only hashes without an allowance remain visible in Blacklist. Blacklist cards sort enforced hashes first, then alphabetically by hash within each group. The enforcement switch edits that hash’s enforcement membership; global enforcement mode still determines punishment. Allowed filename editing remains below the board.
+
+Cached inventory entries are reclassified against current lists, so removing an allowance can return a previously scanned file to Unlisted after reload. The config filename allowlist is respected. A manually returned hash with no cached inventory remains visible during the panel session; after reload only cached inventory files appear as Unlisted. Per-player inventories are not persistent across server restarts. Use `/tsa unlisted` in-game for fresh scans, then Reload lists.

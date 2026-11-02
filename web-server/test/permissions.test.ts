@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { readFile, appendFile } from 'node:fs/promises';
 import { fixture, login, headers, connect, gameFixture, playerId } from './helpers.js';
-import { PERMISSIONS, filterDetail, legacyPermissions } from '../src/permissions.js';
+import { PERMISSIONS, PERMISSION_GROUPS, filterDetail, legacyPermissions } from '../src/permissions.js';
 import { loadConfig, saveRanks, validateRanks } from '../src/config.js';
 
 test('explicit permissions override rank names and gate every tab and mutation before bridge dispatch',async()=>{
@@ -61,4 +61,10 @@ test('each data tab is independent and Java/TypeScript permission catalogs agree
  const catalog=source.split('ALL=Set.of(')[1]!.split(');')[0]!;
  assert.deepEqual([...catalog.matchAll(/"([^"]+)"/g)].map(m=>m[1]).sort(),[...PERMISSIONS].sort());
  assert(!legacyPermissions('viewer').includes('notes.edit'));
+});
+
+test('permission editor groups cover each grant exactly once',()=>{
+ const keys=PERMISSION_GROUPS.flatMap(group=>group.keys);
+ assert.equal(new Set(keys).size,keys.length);
+ assert.deepEqual([...keys].sort(),[...PERMISSIONS].sort());
 });

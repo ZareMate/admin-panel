@@ -8,7 +8,7 @@ import java.util.*;
 public final class BridgeTest {
     public static void main(String[] args) throws Exception {
         int checks = ThreadingTest.run() + ModerationTest.run() + PunishmentRemovalTest.run() + BridgeBatchesTest.run();
-        checks += configChecks();
+        checks += configChecks() + TsaSettingsTest.run() + TsaListsTest.run();
         for(String value:List.of("null","42","true","{}","[]","\"\"","\"  \"","\"bad\\tfield\"")){
             var body=new JsonObject();body.add("value",JsonParser.parseString(value));
             try{RequestFields.string(body,"value",20);throw new AssertionError("Invalid field accepted: "+value);}catch(IllegalArgumentException expected){checks++;}

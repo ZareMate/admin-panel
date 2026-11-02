@@ -110,6 +110,21 @@ final class BridgeClient implements AutoCloseable {
                 boolean list = target.equals("players");
                 watches.put(key, new Watch(list ? "players" : "player", list ? null : UUID.fromString(request.get("player").getAsString()), list ? null : actor(request.getAsJsonObject("actor")), null));
                 result = new JsonObject(); publishAfter = true;
+            } else if (operation.equals("tsa-names") || operation.equals("tsa-unlisted")) {
+                StaffActor user = actor(request.getAsJsonObject("actor")); user.require("tab.tsaConfig");
+                result = operation.equals("tsa-names") ? backend.tsaNames(user, request.getAsJsonArray("hashes")) : backend.tsaUnlisted(user);
+            } else if (operation.equals("tsa-lists") || operation.equals("tsa-list-update")) {
+                StaffActor user = actor(request.getAsJsonObject("actor"));
+                user.require("tab.tsaConfig");
+                boolean update = operation.equals("tsa-list-update");
+                if (update) user.require("tsa.lists.edit");
+                result = backend.tsaLists(user, update ? request.getAsJsonObject("body") : null);
+            } else if (operation.equals("tsa-settings") || operation.equals("tsa-setting-update")) {
+                StaffActor user = actor(request.getAsJsonObject("actor"));
+                user.require("tab.tsaConfig");
+                boolean update = operation.equals("tsa-setting-update");
+                if (update) user.require("tsa.configure");
+                result = backend.tsaSettings(user, update ? request.getAsJsonObject("body") : null);
             } else if (operation.equals("players")) result = backend.players();
             else {
                 UUID id = UUID.fromString(request.get("player").getAsString());

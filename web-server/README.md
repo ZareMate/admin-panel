@@ -22,11 +22,11 @@ npm start
 
 You can instead copy your existing `config/admin-panel.properties` to `data/config/admin-panel.properties` and `logs/admin-panel-audit.jsonl` to `data/logs/admin-panel-audit.jsonl`. Existing local password hashes, Discord rank order, and Minecraft UUID mappings remain compatible. Discord-derived author UUIDs are unchanged, preserving note ownership. Sessions require a fresh login. Discord roles are checked at login and retained in the session; normal page refreshes do not query Discord.
 
-For deployment without source, unpack `build/distributions/admin_panel-2.0.0-web.zip`, run `npm ci --omit=dev`, then `npm run setup` and `npm start`. React is already built in that archive. Keep `data/` on persistent storage. Run **one Node instance per Minecraft server**; bridge connections and browser sessions are process-local.
+For deployment without source, unpack `build/distributions/admin_panel-2.1.0-web.zip`, run `npm ci --omit=dev`, then `npm run setup` and `npm start`. React is already built in that archive. Keep `data/` on persistent storage. Run **one Node instance per Minecraft server**; bridge connections and browser sessions are process-local.
 
 ## Connect Minecraft
 
-Install `admin_panel-2.0.0.jar` and its required Admin GUI dependency in Minecraft. Configure `config/admin-panel-bridge.properties`:
+Install `admin_panel-2.1.0.jar` and its required Admin GUI dependency in Minecraft. Configure `config/admin-panel-bridge.properties`:
 
 ```properties
 enabled=true
@@ -103,7 +103,7 @@ From the repository root, `docker build -f web-server/Dockerfile -t admin-panel-
 
 ## Permissions
 
-Ranks use `discord.rank.<name>.permissions`, a comma-separated list. The highest matching Discord rank wins; grants are not combined across ranks. Rank names do not grant permissions. Use **Rank access** to select each permission, save, and restart Node. The editor preserves one rank with both `panel.access` and `access.manage`. Authorization is captured at login; restarting Node clears existing sessions.
+Ranks use `discord.rank.<name>.permissions`, a comma-separated list. The highest matching Discord rank wins; grants are not combined across ranks. Rank names do not grant permissions. Use **Rank access** to find permissions by feature group or search, save, and restart Node. The editor preserves one rank with both `panel.access` and `access.manage`. Authorization is captured at login; restarting Node clears existing sessions.
 
 | Permission | Allows |
 | --- | --- |

@@ -94,3 +94,73 @@ test('React duration values match the Minecraft moderation wire contract',async(
  assert.equal(durationMinutes('3d'),4320);assert.equal(durationMinutes('2h'),120);assert.equal(durationMinutes('30m'),30);assert.equal(durationMinutes('perm'),0);
  assert.throws(()=>durationMinutes('0m'));assert.throws(()=>durationMinutes('5000w'));assert.throws(()=>durationMinutes('invalid'));
 });
+
+
+test('TSA configuration permissions, CSRF, bridge operations and secret-free audit',async()=>{
+ const f=await fixture();try {
+  const admin=await login(f),viewer=await login(f,'viewer');
+  assert.equal((await f.app.inject({url:'/api/tsa/settings',headers:headers(f)})).statusCode,401);
+  assert.equal((await f.app.inject({url:'/api/tsa/settings',headers:headers(f,viewer)})).statusCode,403);
+  f.config.users.get('moderator')!.permissions=['panel.access','tab.tsaConfig'];
+  const readOnly=await login(f,'moderator');
+  assert.equal((await f.app.inject({method:'POST',url:'/api/tsa/settings',headers:headers(f,readOnly),payload:{setting:'WEBHOOK_ENABLED',value:false}})).statusCode,403);
+  f.config.users.get('moderator')!.permissions=['panel.access','tsa.configure'];
+  const noTab=await login(f,'moderator');
+  assert.equal((await f.app.inject({url:'/api/tsa/settings',headers:headers(f,noTab)})).statusCode,403);
+  assert.equal((await f.app.inject({method:'POST',url:'/api/tsa/settings',headers:headers(f,noTab),payload:{setting:'WEBHOOK_ENABLED',value:false}})).statusCode,403);
+  const messages:any[]=[];
+  const ws=await connect(f,(request,socket)=>{messages.push(request);socket.send(JSON.stringify({id:request.id,result:{settings:[{key:'WEBHOOK_URL',type:'string',secret:true,configured:true}]}}));});
+  assert.equal((await f.app.inject({url:'/api/tsa/settings',headers:headers(f,admin)})).statusCode,200);
+  const payload={setting:'WEBHOOK_URL',value:'https://discord.example/super-secret'};
+  assert.equal((await f.app.inject({method:'POST',url:'/api/tsa/settings',headers:headers(f,viewer),payload})).statusCode,403);
+  assert.equal((await f.app.inject({method:'POST',url:'/api/tsa/settings',headers:{...headers(f,admin),'x-csrf-token':'wrong'},payload})).statusCode,403);
+  assert.equal((await f.app.inject({method:'POST',url:'/api/tsa/settings',headers:headers(f,admin),payload})).statusCode,200);
+  assert.equal(messages[0].operation,'tsa-settings');assert.equal(messages[1].operation,'tsa-setting-update');
+  assert(messages[1].actor.permissions.includes('tsa.configure'));
+  assert.equal(messages[1].body.value,payload.value);
+  const audit=await readFile(f.dir+'/logs/admin-panel-audit.jsonl','utf8');assert(!audit.includes('super-secret'));assert(audit.includes('tsa-setting-update'));
+  assert.equal((await f.app.inject({method:'POST',url:'/api/tsa/settings',headers:headers(f,admin),payload:{setting:'BAD KEY',value:true}})).statusCode,400);
+  ws.close();await once(ws,'close');
+ }finally{await f.close();}
+});
+
+
+test('TSA lists enforce separate list permission, validate inputs and dispatch independent operations',async()=>{
+ const f=await fixture();try{
+  const account=f.config.users.get('admin')!;
+  account.permissions=['panel.access','tab.tsaConfig','tsa.lists.edit'];const editor=await login(f);
+  account.permissions=['panel.access','tab.tsaConfig','tsa.configure'];const settingsOnly=await login(f);
+  account.permissions=['panel.access','tsa.lists.edit'];const noTab=await login(f);
+  const sent:any[]=[];const ws=await connect(f,(request,socket)=>{sent.push(request);socket.send(JSON.stringify({id:request.id,result:{lists:{ALLOWED:[],BLACKLISTED:[],ENFORCEMENT:[],FILENAMES:[]},changed:true}}));});
+  const post=(staff:typeof editor,body:unknown,extra={})=>f.app.inject({method:'POST',url:'/api/tsa/lists',headers:{...headers(f,staff),...extra},payload:body as any});
+  const body={list:'BLACKLISTED',action:'add',hash:'A'.repeat(64)};
+  assert.equal((await post(settingsOnly,body)).statusCode,403);
+  assert.equal((await post(noTab,body)).statusCode,403);
+  assert.equal((await f.app.inject({url:'/api/tsa/lists',headers:headers(f,noTab)})).statusCode,403);
+  assert.equal((await post(editor,body,{'x-csrf-token':'bad'})).statusCode,403);
+  assert.equal((await post(editor,{...body,hash:'invalid'})).statusCode,400);
+  assert.equal((await post(editor,{...body,list:'OTHER'})).statusCode,400);
+  assert.equal((await post(editor,{...body,list:'GENERATED'})).statusCode,400);
+  assert.equal(sent.length,0);
+  assert.equal((await f.app.inject({url:'/api/tsa/lists',headers:headers(f,settingsOnly)})).statusCode,200);
+  for(const list of ['ALLOWED','BLACKLISTED','ENFORCEMENT','FILENAMES'])for(const action of ['add','remove'])assert.equal((await post(editor,{...body,list,action,name:'file.jar',type:'MOD'})).statusCode,200);
+  assert.equal(sent[0].operation,'tsa-lists');assert.equal(sent[1].operation,'tsa-list-update');assert.equal(sent[1].body.hash,'a'.repeat(64));
+  assert(sent[1].actor.permissions.includes('tsa.lists.edit'));assert(!sent[1].actor.permissions.includes('tsa.configure'));
+  const audit=await readFile(f.dir+'/logs/admin-panel-audit.jsonl','utf8');assert(audit.includes('tsa-list-add'));assert(audit.includes('tsa-list-remove'));
+  ws.close();await once(ws,'close');
+ }finally{await f.close();}
+});
+
+
+test('TSA board bounds filename batches and protects unlisted inventories',async()=>{
+ const f=await fixture();try{
+  f.config.users.get('admin')!.permissions=['panel.access','tab.tsaConfig'];const reader=await login(f),viewer=await login(f,'viewer');
+  const sent:any[]=[];const ws=await connect(f,(request,socket)=>{sent.push(request);socket.send(JSON.stringify({id:request.id,result:request.operation==='tsa-names'?{names:{}}:{entries:[],playersScanned:0}}));});
+  const post=(hashes:unknown,user=reader)=>f.app.inject({method:'POST',url:'/api/tsa/names',headers:headers(f,user),payload:{hashes}});
+  assert.equal((await post(['a'.repeat(64)],viewer)).statusCode,403);assert.equal((await post(Array(51).fill('a'.repeat(64)))).statusCode,400);assert.equal((await post(['bad'])).statusCode,400);assert.equal(sent.length,0);
+  assert.equal((await post(['a'.repeat(64)])).statusCode,200);assert.equal(sent[0].operation,'tsa-names');
+  assert.equal((await f.app.inject({url:'/api/tsa/unlisted',headers:headers(f,viewer)})).statusCode,403);
+  assert.equal((await f.app.inject({url:'/api/tsa/unlisted',headers:headers(f,reader)})).statusCode,200);assert.equal(sent[1].operation,'tsa-unlisted');
+  ws.close();await once(ws,'close');
+ }finally{await f.close();}
+});

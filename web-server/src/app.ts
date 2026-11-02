@@ -163,6 +163,43 @@ export async function createApp(config:Config, options:{bridge?:Bridge;fetcher?:
   });
   app.get('/api/session',async req=>{const s=req.panelSession!;return {name:s.user.name,rank:s.user.rank,permissions:s.user.permissions||[],csrf:s.csrf};});
   app.post('/api/logout',async(req,reply)=>{auth.logout(req.cookies.panel_session||'');live.revoke(req.cookies.panel_session||'');reply.clearCookie('panel_session',sessionCookie);return {};});
+  app.post('/api/tsa/names',async req=>{
+    const user=req.panelSession!.user;requirePermission(user,'tab.tsaConfig');
+    const hashes=object(req.body).hashes;
+    if(!Array.isArray(hashes)||hashes.length>50||hashes.some(hash=>typeof hash!=='string'||!/^[a-fA-F0-9]{64}$/.test(hash)))throw new Failure(400,'Expected up to 50 SHA-256 hashes');
+    return bridge.call('tsa-names',{actor:user,hashes});
+  });
+  app.get('/api/tsa/unlisted',async req=>{
+    const user=req.panelSession!.user;requirePermission(user,'tab.tsaConfig');
+    return bridge.call('tsa-unlisted',{actor:user});
+  });
+  app.get('/api/tsa/lists',async req=>{
+    const user=req.panelSession!.user;requirePermission(user,'tab.tsaConfig');
+    return bridge.call('tsa-lists',{actor:user});
+  });
+  app.post('/api/tsa/lists',async req=>{
+    const user=req.panelSession!.user;requirePermission(user,'tab.tsaConfig');requirePermission(user,'tsa.lists.edit');
+    const body=object(req.body),list=text(body.list,32,'List'),action=text(body.action,8,'Action');
+    if(!['ALLOWED','BLACKLISTED','ENFORCEMENT','FILENAMES'].includes(list)||!['add','remove'].includes(action))throw new Failure(400,'Invalid list operation');
+    const entry:Record<string,unknown>={list,action};
+    if(list==='FILENAMES')entry.name=text(body.name,1024,'Filename');
+    if(list!=='FILENAMES'){const hash=text(body.hash,64,'Hash').trim().toLowerCase();if(!/^[a-f0-9]{64}$/.test(hash))throw new Failure(400,'Expected a 64 character SHA-256 hash');entry.hash=hash;}
+    await audit.write(user.name,'tsa-list-'+action,list,'requested',entry);
+    try{const result=await bridge.call('tsa-list-update',{actor:user,body:entry});await audit.write(user.name,'tsa-list-'+action,list,'success',entry);return result;}
+    catch(error){await audit.write(user.name,'tsa-list-'+action,list,'failed-or-unconfirmed',entry);throw error;}
+  });
+  app.get('/api/tsa/settings',async req=>{
+    const user=req.panelSession!.user;requirePermission(user,'tab.tsaConfig');
+    return bridge.call('tsa-settings',{actor:user});
+  });
+  app.post('/api/tsa/settings',async req=>{
+    const user=req.panelSession!.user;requirePermission(user,'tab.tsaConfig');requirePermission(user,'tsa.configure');
+    const body=object(req.body),setting=text(body.setting,80,'Setting');
+    if(!/^[A-Z_]+$/.test(setting)||!('value' in body))throw new Failure(400,'Invalid setting');
+    await audit.write(user.name,'tsa-setting-update',setting,'requested',{});
+    try {const result=await bridge.call('tsa-setting-update',{actor:user,body:{setting,value:body.value}});await audit.write(user.name,'tsa-setting-update',setting,'success',{});return result;}
+    catch(error){await audit.write(user.name,'tsa-setting-update',setting,'failed-or-unconfirmed',{});throw error;}
+  });
   app.get('/api/players',async req=>{requirePermission(req.panelSession!.user,'tab.players');return filterPlayers(await bridge.players(),req.panelSession!.user);});
   app.get<{Params:{id:string}}>('/api/players/:id',async req=>{const user=req.panelSession!.user;requirePermission(user,'tab.players');return filterDetail(await bridge.player(uuid(req.params.id),user),user);});
   app.post<{Params:{id:string;action:string}}>('/api/players/:id/:action',async req=>{

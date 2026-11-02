@@ -30,6 +30,23 @@ final class MinecraftBackend implements Backend {
         if (server.isSameThread()) throw new IllegalStateException("Panel requests must run on the bridge worker");
         if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException("Panel bridge stopped");
     }
+    public JsonObject tsaNames(StaffActor actor, JsonArray hashes) throws Exception {
+        requireWorker(); actor.require("tab.tsaConfig"); return TsaLists.names(hashes);
+    }
+    public JsonObject tsaUnlisted(StaffActor actor) throws Exception {
+        requireWorker(); actor.require("tab.tsaConfig"); return TsaLists.unlisted();
+    }
+    public JsonObject tsaLists(StaffActor actor, JsonObject update) throws Exception {
+        requireWorker(); actor.require("tab.tsaConfig");
+        if (update != null) actor.require("tsa.lists.edit");
+        return TsaLists.access(update);
+    }
+    public JsonObject tsaSettings(StaffActor actor, JsonObject update) throws Exception {
+        requireWorker();
+        actor.require("tab.tsaConfig");
+        if (update != null) actor.require("tsa.configure");
+        return TsaSettings.access(update);
+    }
     public JsonObject players() throws Exception {
         requireWorker();
         JsonObject result = data.buildPlayerList(server);

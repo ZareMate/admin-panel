@@ -49,3 +49,78 @@ test('React rank editor works for an explicitly granted custom rank', {timeout:9
   assert(props.get('discord.rank.owner.permissions')!.split(',').includes('access.manage'));
  }finally{await f.close();}
 });
+
+
+test('TSA configuration typed saves and independent read-only tab in Chromium',{timeout:90000},async()=>{
+ const f=await fixture();try{
+  const settings:any[]=[{key:'LOGIN_CHECK_DELAY_SECONDS',type:'integer',value:5,secret:false},{key:'WEBHOOK_ENABLED',type:'boolean',value:true,secret:false},{key:'FILENAME_DETECTION_KEYWORDS',type:'list',value:['xray'],secret:false},{key:'ENFORCEMENT_MODE',type:'string',value:'off',secret:false},{key:'WEBHOOK_URL',type:'string',secret:true,configured:true}];
+  const updates:any[]=[];
+  await connect(f,(request,socket)=>{
+   if(request.operation==='tsa-unlisted'){socket.send(JSON.stringify({id:request.id,result:{entries:[],playersScanned:0}}));return;}
+   if(request.operation==='tsa-lists'){socket.send(JSON.stringify({id:request.id,result:{lists:{ALLOWED:[],BLACKLISTED:[],ENFORCEMENT:[],FILENAMES:[]}}}));return;}
+   if(request.operation==='tsa-setting-update'){updates.push(request.body);const row=settings.find(row=>row.key===request.body.setting);if(!row.secret)row.value=request.body.value;}
+   socket.send(JSON.stringify({id:request.id,result:{settings}}));
+  });
+  for(const readonly of [false,true]){
+   const session=f.auth.create({name:'TSA staff',rank:'custom',uuid:'00000000-0000-0000-0000-000000000009',permissions:['panel.access','tab.tsaConfig',...(readonly?[]:['tsa.configure'])]});
+   const browser=spawn('python3',['test/browser.py',f.url,'tsa'],{stdio:'inherit',env:{...process.env,PANEL_TEST_SESSION:session,PANEL_TSA_READ_ONLY:readonly?'1':'0'}});
+   const [code]=await once(browser,'exit');assert.equal(code,0,'TSA browser checks');
+  }
+  assert.deepEqual(updates.map(row=>row.setting),['LOGIN_CHECK_DELAY_SECONDS','FILENAME_DETECTION_KEYWORDS','WEBHOOK_URL']);
+  assert.equal(updates[0].value,25);assert.deepEqual(updates[1].value,['one','two']);
+ }finally{await f.close();}
+});
+
+
+test('TSA hash and filename list editing in Chromium',{timeout:90000},async()=>{
+ const f=await fixture();try{
+  const lists:Record<string,any[]>={ALLOWED:[],BLACKLISTED:['a'.repeat(64)],ENFORCEMENT:[],FILENAMES:[]};const updates:any[]=[];
+  await connect(f,(request,socket)=>{
+   if(request.operation==='tsa-settings'){socket.send(JSON.stringify({id:request.id,result:{settings:[]}}));return;}
+   if(request.operation==='tsa-unlisted'){socket.send(JSON.stringify({id:request.id,result:{entries:[{hash:'a'.repeat(64),filename:'observed.jar',type:'MOD',playerCount:1},{hash:'c'.repeat(64),filename:'unlisted.jar',type:'MOD',playerCount:1},{hash:'c'.repeat(64),filename:'alias.jar',type:'MOD',playerCount:1},{hash:'d'.repeat(64),filename:'other.jar',type:'MOD',playerCount:1}],playersScanned:1}}));return;}
+   if(request.operation==='tsa-names'){socket.send(JSON.stringify({id:request.id,result:{names:Object.fromEntries(request.hashes.map((hash:string)=>[hash,[{hash,type:'MOD',filename:'observed.jar'}]]))}}));return;}
+   if(request.operation==='tsa-list-update'){
+    const body=request.body;updates.push(body);const value=body.list==='FILENAMES'?body.name:body.hash;
+    if(body.action==='add'){if(!lists[body.list].includes(value))lists[body.list].push(value);}else lists[body.list]=lists[body.list].filter(entry=>JSON.stringify(entry)!==JSON.stringify(value));
+   }
+   socket.send(JSON.stringify({id:request.id,result:{lists,changed:true}}));
+  });
+  for(const readonly of [false,true]){
+   // Existing files/API clients may leave overlapping memberships. Allowlist must win in the board.
+   if(readonly){lists.BLACKLISTED.push('a'.repeat(64),'e'.repeat(64),'f'.repeat(64));lists.ENFORCEMENT.push('a'.repeat(64),'f'.repeat(64));}
+   const session=f.auth.create({name:'List staff',rank:'custom',uuid:'00000000-0000-0000-0000-000000000009',permissions:['panel.access','tab.tsaConfig',...(readonly?[]:['tsa.lists.edit'])]});
+   const browser=spawn('python3',['test/browser.py',f.url,'tsa-lists'],{stdio:'inherit',env:{...process.env,PANEL_TEST_SESSION:session,PANEL_TSA_READ_ONLY:readonly?'1':'0'}});
+   const [code]=await once(browser,'exit');assert.equal(code,0,'TSA list browser checks');
+  }
+  assert(updates.some(body=>body.list==='ENFORCEMENT'&&body.action==='add'));assert(updates.some(body=>body.list==='ENFORCEMENT'&&body.action==='remove'));assert(updates.some(body=>body.list==='ALLOWED'&&body.action==='add'));assert(updates.some(body=>body.list==='BLACKLISTED'&&body.action==='remove'));
+  assert.equal(lists.BLACKLISTED.length,4);assert(lists.ALLOWED.includes('a'.repeat(64)));assert(!lists.ENFORCEMENT.includes('c'.repeat(64)));assert(!lists.BLACKLISTED.includes('c'.repeat(64)));assert.equal(lists.FILENAMES[0],'trusted.jar');
+ }finally{await f.close();}
+});
+
+
+test('moving overlapping allowed hashes clears punishment sources before revoking allowance',{timeout:90000},async()=>{
+ const f=await fixture();try{
+  const a='a'.repeat(64),b='b'.repeat(64);
+  const lists:Record<string,string[]>={ALLOWED:[a,b],BLACKLISTED:[a,b],ENFORCEMENT:[a,b],FILENAMES:[]};
+  const operations:any[]=[];
+  await connect(f,(request,socket)=>{
+   if(request.operation==='tsa-settings'){socket.send(JSON.stringify({id:request.id,result:{settings:[]}}));return;}
+   if(request.operation==='tsa-unlisted'){socket.send(JSON.stringify({id:request.id,result:{playersScanned:1,entries:[a,b].map(hash=>({hash,type:'MOD',filename:hash[0]+'.jar'}))}}));return;}
+   if(request.operation==='tsa-names'){socket.send(JSON.stringify({id:request.id,result:{names:Object.fromEntries(request.hashes.map((hash:string)=>[hash,[{hash,type:'MOD',filename:hash[0]+'.jar'}]]))}}));return;}
+   if(request.operation==='tsa-list-update'){
+    const {list,action,hash}=request.body;operations.push(request.body);
+    if(list==='ALLOWED'&&action==='remove'){
+     assert(!lists.ENFORCEMENT.includes(hash),'Enforcement must be cleared while the allowance still protects the hash');
+     if(hash===a)assert(!lists.BLACKLISTED.includes(hash),'Unlisting must clear blacklist before allowance');
+    }
+    if(action==='add'){if(!lists[list].includes(hash))lists[list].push(hash);}else lists[list]=lists[list].filter(value=>value!==hash);
+   }
+   socket.send(JSON.stringify({id:request.id,result:{lists,changed:true}}));
+  });
+  const session=f.auth.create({name:'List editor',rank:'custom',uuid:'00000000-0000-0000-0000-000000000009',permissions:['panel.access','tab.tsaConfig','tsa.lists.edit']});
+  const browser=spawn('python3',['test/browser.py',f.url,'tsa-safe-moves'],{stdio:'inherit',env:{...process.env,PANEL_TEST_SESSION:session}});
+  const [code]=await once(browser,'exit');assert.equal(code,0,'Safe allowance moves');
+  assert.deepEqual(lists.ALLOWED,[]);assert.deepEqual(lists.ENFORCEMENT,[]);assert.deepEqual(lists.BLACKLISTED,[b]);
+  assert.equal(operations.length,6);
+ }finally{await f.close();}
+});
