@@ -1,6 +1,13 @@
 // Shared with the React client. Authorization never derives from a rank name.
 export const PERMISSIONS = ['tsa.lists.edit', 'tab.tsaConfig', 'tsa.configure', 'suggestions.reply', 'tab.todo', 'todo.create', 'todo.edit', 'todo.delete', 'tab.suggestions', 'suggestions.tags', 'suggestions.status', 'suggestions.create', 'suggestions.delete', 'tickets.reply', 'tab.tickets', 'tickets.lost-items-or-airship', 'tickets.other-support', 'tickets.cant-connect-to-the-server', 'tickets.buy-a-shop-plot-at-spawn', 'tickets.stealing-or-grieffing', 'tickets.player-report', 'tickets.report', 'tickets.uncategorized', 'panel.access', 'tab.players', 'tab.overview', 'tab.cases', 'tab.notes', 'tab.security', 'tab.inventory', 'tab.enderChest', 'tab.curios', 'tab.audit', 'access.manage', 'notes.add', 'notes.edit', 'notes.remove', 'punish.warn', 'punish.kick', 'punish.mute', 'punish.ban', 'punish.offense', 'punish.remove', 'punish.revoke'] as const;
 export type Permission = typeof PERMISSIONS[number];
+// Only grants enforced inside Minecraft cross the game bridge. Web-owned grants
+// stay in the session and are checked by the Node routes.
+export const GAME_PERMISSIONS: ReadonlySet<string> = new Set(PERMISSIONS.filter(key =>
+  key==='panel.access' || key==='tab.players' || key==='tab.tsaConfig'
+  || ['tab.overview','tab.cases','tab.notes','tab.security','tab.inventory','tab.enderChest','tab.curios'].includes(key)
+  || key.startsWith('notes.') || key.startsWith('punish.') || key.startsWith('tsa.')
+));
 export const has = (user:{permissions?:readonly string[]}|null|undefined, permission:string) => !!user?.permissions?.includes(permission);
 export function legacyPermissions(role:string, rank=role):string[] {
   if(role==='deny')return [];

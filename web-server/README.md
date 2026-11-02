@@ -89,6 +89,8 @@ Bundled item exports live in `assets/icons/` and are copied to generated `public
 
 Signed-in browsers connect to `/api/live` over WebSocket on the same host and port. Forward WebSocket upgrades for both `/bridge` (Minecraft) and `/api/live` (browsers); the nginx catch-all example above already does this. Install the updated mod and restart the Node service together, then reload browser tabs.
 
+The web service sends Minecraft only permissions that the game bridge enforces; web-only grants such as suggestion actions stay in the web session. This prevents a newer web-only grant from breaking older installed panel mods.
+
 The mod samples only subscribed data approximately once per second and pushes snapshots only when content changes. Player joins/leaves and panel mutations also request an immediate sample. The player list is shared across viewers; the selected profile is keyed by player and staff identity/permissions, preserving note ownership. Location, inventory, playtime, security data, notes, and punishments update while that profile is open. Timestamp-only changes do not resend entire snapshots. Under server load, updates may take longer than one second.
 
 Closing a tab or logging out removes its subscriptions; with no viewers, the mod does not continuously build live snapshots. Browser and Minecraft connections reconnect automatically and restore subscriptions. Expired sessions lose live access. Selected-player updates pause in the UI while a moderation dialog is open so forms are not disrupted. The Refresh button remains available, with a 30-second HTTP fallback when the live channel is unavailable. Commands are never replayed during reconnect.

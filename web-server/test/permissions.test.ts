@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { readFile, appendFile } from 'node:fs/promises';
 import { fixture, login, headers, connect, gameFixture, playerId } from './helpers.js';
-import { PERMISSIONS, PERMISSION_GROUPS, filterDetail, legacyPermissions } from '../src/permissions.js';
+import { PERMISSIONS, PERMISSION_GROUPS, GAME_PERMISSIONS, filterDetail, legacyPermissions } from '../src/permissions.js';
 import { loadConfig, saveRanks, validateRanks } from '../src/config.js';
 
 test('explicit permissions override rank names and gate every tab and mutation before bridge dispatch',async()=>{
@@ -67,4 +67,22 @@ test('permission editor groups cover each grant exactly once',()=>{
  const keys=PERMISSION_GROUPS.flatMap(group=>group.keys);
  assert.equal(new Set(keys).size,keys.length);
  assert.deepEqual([...keys].sort(),[...PERMISSIONS].sort());
+});
+
+test('game bridge omits web-only grants while preserving TSA and player permissions',async()=>{
+ const f=await fixture();try{
+  const account=f.config.users.get('admin')!;
+  account.permissions=['panel.access','tab.players','tab.notes','notes.edit','tab.tsaConfig','tsa.configure','tsa.lists.edit','tab.suggestions','suggestions.status','tab.todo','todo.create'];
+  const staff=await login(f),game=gameFixture();await connect(f,game.handler);
+  assert.equal((await f.app.inject({url:'/api/players/'+playerId,headers:headers(f,staff)})).statusCode,200);
+  assert.equal((await f.app.inject({url:'/api/tsa/lists',headers:headers(f,staff)})).statusCode,200);
+  const expected=['panel.access','tab.players','tab.notes','notes.edit','tab.tsaConfig','tsa.configure','tsa.lists.edit'];
+  for(const operation of ['player','tsa-lists']){
+   const sent=game.messages.find(message=>message.operation===operation);
+   assert(sent,operation);
+   assert.deepEqual([...sent.actor.permissions].sort(),[...expected].sort());
+  }
+  assert(GAME_PERMISSIONS.has('tab.tsaConfig'));
+  assert(!GAME_PERMISSIONS.has('suggestions.status'));
+ }finally{await f.close();}
 });

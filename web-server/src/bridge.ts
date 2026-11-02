@@ -2,6 +2,7 @@ import { WebSocket } from 'ws';
 import { randomUUID } from 'node:crypto';
 import { Failure, type User } from './common.js';
 import { BatchReceiver } from './batches.js';
+import { GAME_PERMISSIONS } from './permissions.js';
 interface Pending { resolve:(value:unknown)=>void; reject:(error:Error)=>void; timer:NodeJS.Timeout }
 export class Bridge {
   private peer?: WebSocket;
@@ -79,7 +80,12 @@ export class Bridge {
     return new Promise((resolve,reject)=>{
       const timer=setTimeout(()=>{ this.pending.delete(id); reject(new Failure(504,'Minecraft request timed out. Execution may have started; inspect player history and audit before retrying.')); },this.timeout);
       this.pending.set(id,{resolve,reject,timer});
-      const message=JSON.stringify({version:1,id,deadline:Date.now()+Math.min(this.timeout,15_000),operation,...fields});
+      const actor=fields.actor as User|undefined;
+      const gameFields=actor?{...fields,actor:{
+        name:actor.name,uuid:actor.uuid,rank:actor.rank,
+        permissions:(actor.permissions??[]).filter(key=>GAME_PERMISSIONS.has(key))
+      }}:fields;
+      const message=JSON.stringify({version:1,id,deadline:Date.now()+Math.min(this.timeout,15_000),operation,...gameFields});
       if (Buffer.byteLength(message)>65_536) { clearTimeout(timer); this.pending.delete(id); reject(new Failure(413,'Bridge request too large')); return; }
       peer.send(message,error=>{ if (error) { peer.terminate(); this.failAll(); } });
     });
@@ -93,8 +99,7 @@ export class Bridge {
     }
     return this.refreshing;
   }
-  player(player:string, actor:User) { return this.call('player',{player,actor:this.actor(actor)}); }
-  mutate(player:string, actor:User, action:string, body:unknown) { this.cached=undefined; return this.call('mutate',{player,actor:this.actor(actor),action,body}); }
-  private actor(user:User) { return {name:user.name,rank:user.rank,uuid:user.uuid,permissions:user.permissions||[]}; }
+  player(player:string, actor:User) { return this.call('player',{player,actor}); }
+  mutate(player:string, actor:User, action:string, body:unknown) { this.cached=undefined; return this.call('mutate',{player,actor,action,body}); }
   close() { this.batches.reset(); clearInterval(this.timer); this.failAll(); this.peer?.terminate(); this.peer=undefined; }
 }
