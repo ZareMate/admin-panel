@@ -119,7 +119,6 @@ with tempfile.TemporaryDirectory(prefix='react-browser-') as profile:
             first=js("return document.querySelector('[data-tsa-list=BLACKLISTED] .tsa-hash-card').dataset.hash")
             click('[data-tsa-list=BLACKLISTED] .tsa-page-nav-next')
             wait("document.querySelector('[data-tsa-list=BLACKLISTED] .tsa-hash-card').dataset.hash!==arguments[0]".replace('arguments[0]',json.dumps(first)))
-            fill('#tsa-page-size','10') if False else None
             js("const s=document.querySelector('#tsa-page-size');s.value='10';s.dispatchEvent(new Event('change',{bubbles:true}));")
             wait("document.querySelectorAll('[data-tsa-list=ALLOWED] .tsa-hash-card').length===10")
             check("document.querySelectorAll('[data-tsa-list=BLACKLISTED] .tsa-hash-card').length<10",'page size selector recomputes height budget')
