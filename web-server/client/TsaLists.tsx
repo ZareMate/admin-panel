@@ -8,7 +8,7 @@ const PAGE=30;
 const filenameKey=(value:string)=>value.normalize('NFKC').toLowerCase().replace(/[^a-z0-9]/g,'');
 export function TsaLists({api,canEdit}:{api:Api;canEdit:boolean}) {
  const [snapshot,setSnapshot]=useState<Snapshot|null>(null),[names,setNames]=useState<Names>({}),[unlisted,setUnlisted]=useState<Entry[]>([]),[scanned,setScanned]=useState(0);
- const [error,setError]=useState(''),[inventoryError,setInventoryError]=useState(''),[status,setStatus]=useState(''),[busy,setBusy]=useState(false),[query,setQuery]=useState('');
+ const [error,setError]=useState(''),[inventoryError,setInventoryError]=useState(''),[status,setStatus]=useState(''),[busy,setBusy]=useState(false),[queries,setQueries]=useState<Record<string,string>>({});
  const [pages,setPages]=useState<Record<string,number>>({}),[dragging,setDragging]=useState<string|null>(null),[over,setOver]=useState<string|null>(null);
  const [unlistedPage,setUnlistedPage]=useState(0),[returned,setReturned]=useState<Record<string,Entry[]>>({});
  const dragged=useRef<string|null>(null);
@@ -55,8 +55,14 @@ export function TsaLists({api,canEdit}:{api:Api;canEdit:boolean}) {
  };
  const list=(key:string)=>snapshot?.lists?.[key]??[];
  const enforced=new Set(list('ENFORCEMENT')),allowed=new Set(list('ALLOWED')),blacklisted=new Set(list('BLACKLISTED'));
- const blacklist=[...new Set([...blacklisted,...enforced])].filter(hash=>!allowed.has(hash)).sort((left,right)=>Number(enforced.has(right))-Number(enforced.has(left))||left.localeCompare(right));
- const matches=(hash:string)=>[hash,...(names[hash]??[]).map(entry=>entry.filename)].join(' ').toLowerCase().includes(query.toLowerCase());
+ const label=(hash:string)=>names[hash]?.map(entry=>entry.filename).sort((a,b)=>a.localeCompare(b,undefined,{sensitivity:'base'}))[0]??'';
+ const blacklist=[...new Set([...blacklisted,...enforced])].filter(hash=>!allowed.has(hash)).sort((left,right)=>
+  Number(enforced.has(right))-Number(enforced.has(left))||
+  Number(!label(left))-Number(!label(right))||
+  (label(left)||left).localeCompare(label(right)||right,undefined,{sensitivity:'base'}));
+ const matches=(hash:string,column:string,entries:Entry[]=names[hash]??[])=>[hash,...entries.map(entry=>entry.filename)]
+  .join(' ').toLocaleLowerCase().includes((queries[column]??'').trim().toLocaleLowerCase());
+ const setFilter=(column:string,value:string)=>{setQueries(previous=>({...previous,[column]:value}));setPages(previous=>({...previous,[column]:0}));if(column==='UNLISTED')setUnlistedPage(0);};
  const allowedNames=new Set(list('FILENAMES').map(filenameKey));
  const candidates=new Map<string,Entry[]>();
  for(const entry of [...unlisted,...Object.values(returned).flat()]) {
@@ -66,7 +72,8 @@ export function TsaLists({api,canEdit}:{api:Api;canEdit:boolean}) {
   candidates.set(entry.hash,entries);
  }
  const unresolved=[...candidates.keys()].filter(hash=>!allowed.has(hash)&&!blacklisted.has(hash)&&!enforced.has(hash)
-  && [hash,...candidates.get(hash)!.map(entry=>entry.filename)].join(' ').toLowerCase().includes(query.toLowerCase())).sort();
+  && matches(hash,'UNLISTED',candidates.get(hash)!)).sort((left,right)=>
+  (candidates.get(left)?.[0]?.filename??left).localeCompare(candidates.get(right)?.[0]?.filename??right,undefined,{sensitivity:'base'}));
  const unlistedCurrent=Math.min(unlistedPage,Math.max(0,Math.ceil(unresolved.length/PAGE)-1));
  const hashCard=(hash:string,column:string)=><article className={'card todo-task tsa-hash-card '+(dragging===hash?'dragging':'')} key={hash} data-hash={hash} draggable={canEdit&&!busy}
   onDragStart={event=>{if((event.target as HTMLElement).closest('button,input,select,textarea')){event.preventDefault();return;}event.dataTransfer.setData('text/plain',hash);event.dataTransfer.effectAllowed='move';dragged.current=hash;setDragging(hash);}}
@@ -81,14 +88,14 @@ export function TsaLists({api,canEdit}:{api:Api;canEdit:boolean}) {
  </article>;
  return <section id="tsa-board"><div className="card section-header"><div><h2>Hash and filename lists</h2><p className="muted">Drag a hash between columns, or use Allow and Blacklist. Enforcement follows TSA’s global mode.</p></div><button className="secondary" disabled={busy} onClick={()=>void load()}>Reload lists</button></div>
  {!canEdit&&<p className="notice">You have read-only access to TSA lists.</p>}{error&&<p className="banner error" role="alert">{error}</p>}{status&&<p className="notice" role="status">{status}</p>}
- <input className="board-search" aria-label="Search TSA lists" placeholder="Search filename or hash…" value={query} onChange={event=>{setQuery(event.target.value);setPages({});setUnlistedPage(0);}}/>
  <div className="todo-columns tsa-columns">{[['BLACKLISTED','Blacklist',blacklist],['ALLOWED','Allow list',list('ALLOWED')]] .map(([key,title,values])=>{
-  const id=key as string,hashes=(values as string[]).filter(matches),page=Math.min(pages[id]??0,Math.max(0,Math.ceil(hashes.length/PAGE)-1));
+  const id=key as string,hashes=(values as string[]).filter(hash=>matches(hash,id)),page=Math.min(pages[id]??0,Math.max(0,Math.ceil(hashes.length/PAGE)-1));
   return <section className={'todo-column '+(over===id?'drop-target':'')} data-tsa-list={id} key={id}
    onDragOver={event=>{if(canEdit&&!busy&&dragged.current){event.preventDefault();event.dataTransfer.dropEffect='move';setOver(id);}}}
    onDragLeave={event=>{if(!event.currentTarget.contains(event.relatedTarget as Node|null))setOver(null);}}
    onDrop={event=>{event.preventDefault();const hash=dragged.current;dragged.current=null;setDragging(null);setOver(null);if(hash&&canEdit&&!busy)void move(hash,id);}}>
    <header><h2>{title as string}</h2><span className="pill">{hashes.length}</span></header>
+   <input className="board-search" type="search" aria-label={'Filter '+title+' by name or hash'} placeholder="Filter by name or hash…" value={queries[id]??''} onChange={event=>setFilter(id,event.target.value)}/>
    <AddHash id={id} disabled={!snapshot||!canEdit||busy} add={hash=>run([{list:id,action:'add',hash}])}/>
    {hashes.slice(page*PAGE,page*PAGE+PAGE).map(hash=>hashCard(hash,id))}{!hashes.length&&<p className="empty">No matching entries.</p>}
    <Pages page={page} count={hashes.length} change={value=>setPages(previous=>({...previous,[id]:value}))}/>
@@ -100,6 +107,7 @@ export function TsaLists({api,canEdit}:{api:Api;canEdit:boolean}) {
   onDrop={event=>{event.preventDefault();const hash=dragged.current;dragged.current=null;setDragging(null);setOver(null);if(hash&&canEdit&&!busy)void move(hash,'UNLISTED');}}>
   <header><h2>Unlisted</h2><span className="pill">{unresolved.length}</span></header>
   <p className="muted">Files from the latest cached scans of {scanned} player(s). Drag here to remove a hash from all hash lists. Run /tsa unlisted in-game for fresh inventories.</p>
+  <input className="board-search" type="search" aria-label="Filter Unlisted by name or hash" placeholder="Filter by name or hash…" value={queries.UNLISTED??''} onChange={event=>setFilter('UNLISTED',event.target.value)}/>
   {inventoryError&&<p className="error" role="alert">{inventoryError}</p>}
   {unresolved.slice(unlistedCurrent*PAGE,unlistedCurrent*PAGE+PAGE).map(hash=><article className={'card todo-task tsa-hash-card '+(dragging===hash?'dragging':'')} key={hash} data-hash={hash} draggable={canEdit&&!busy} onDragStart={event=>{if((event.target as HTMLElement).closest('button')){event.preventDefault();return;}dragged.current=hash;setDragging(hash);event.dataTransfer.setData('text/plain',hash);event.dataTransfer.effectAllowed='move';}} onDragEnd={()=>{dragged.current=null;setDragging(null);setOver(null);}}>
    <FileLabel hash={hash} entries={candidates.get(hash)}/>
