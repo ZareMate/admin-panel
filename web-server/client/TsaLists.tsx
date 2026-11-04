@@ -224,7 +224,7 @@ function FileLabel({hash,entries,reason}:{hash:string;entries?:Entry[];reason?:s
  </div>;
 }
 function Pages({page,total,change}:{page:number;total:number;change:(value:number)=>void}) {
- if(total<=1)return null;return <div className="board-actions"><button className="secondary small" disabled={!page} onClick={()=>change(page-1)}>Previous</button><span>{page+1} / {total}</span><button className="secondary small" disabled={page+1>=total} onClick={()=>change(page+1)}>Next</button></div>;
+ if(total<=1)return null;return <div className="board-actions"><button className="secondary small" disabled={!page} onClick={()=>change(page-1)}>Previous</button><span>{page+1} / {total}</span><button className="secondary small tsa-page-nav-next" disabled={page+1>=total} onClick={()=>change(page+1)}>Next</button></div>;
 }
 function AddHash({id,disabled,add}:{id:string;disabled:boolean;add:(hash:string)=>Promise<boolean>}) {
  const [hash,setHash]=useState('');return <form className="tsa-list-add" onSubmit={async event=>{event.preventDefault();if(await add(hash))setHash('');}}><label>SHA-256 hash<input aria-label={'Add hash to '+id} required pattern="[a-fA-F0-9]{64}" maxLength={64} disabled={disabled} value={hash} onChange={event=>setHash(event.target.value.trim().toLowerCase())}/></label><button className="primary" disabled={disabled}>Add entry</button></form>;
