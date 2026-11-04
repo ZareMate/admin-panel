@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Api } from './types';
+import { sortHashesByFilename } from './tsa-sort';
 type Entry={hash:string;type:string;filename:string;playerCount?:number};
 type Snapshot={lists:Record<string,string[]>;changed?:boolean};
 type Names=Record<string,Entry[]>;
@@ -55,17 +56,8 @@ export function TsaLists({api,canEdit}:{api:Api;canEdit:boolean}) {
  };
  const list=(key:string)=>snapshot?.lists?.[key]??[];
  const enforced=new Set(list('ENFORCEMENT')),allowed=new Set(list('ALLOWED')),blacklisted=new Set(list('BLACKLISTED'));
- // Sort by the filename users actually see, not by enforcement state or SHA-256.
- // Hashes without a known name always appear after named entries.
- const label=(hash:string)=>names[hash]?.find(entry=>entry.filename.trim())?.filename.trim()??'';
- const byFilename=(left:string,right:string)=>{
-  const a=label(left),b=label(right);
-  return Number(!a)-Number(!b)||
-   (a||left).localeCompare(b||right,undefined,{sensitivity:'base'})||
-   left.localeCompare(right);
- };
- const blacklist=[...new Set([...blacklisted,...enforced])].filter(hash=>!allowed.has(hash)).sort(byFilename);
- const allowlist=[...allowed].sort(byFilename);
+ const blacklist=sortHashesByFilename([...new Set([...blacklisted,...enforced])].filter(hash=>!allowed.has(hash)),names);
+ const allowlist=sortHashesByFilename([...allowed],names);
  const matches=(hash:string,column:string,entries:Entry[]=names[hash]??[])=>[hash,...entries.map(entry=>entry.filename)]
   .join(' ').toLocaleLowerCase().includes((queries[column]??'').trim().toLocaleLowerCase());
  const setFilter=(column:string,value:string)=>{setQueries(previous=>({...previous,[column]:value}));setPages(previous=>({...previous,[column]:0}));if(column==='UNLISTED')setUnlistedPage(0);};
