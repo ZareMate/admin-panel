@@ -123,6 +123,17 @@ with tempfile.TemporaryDirectory(prefix='react-browser-') as profile:
             wait("document.querySelector('[data-tsa-list=UNLISTED]').textContent.includes('unlisted.jar')")
             check("!document.querySelector('.tsa-hash-lookup') && [...document.querySelectorAll('#tsa-board .todo-column>header h2')].map(e=>e.textContent).join(',')==='Blacklist,Allow list,Unlisted'",'three lists without lookup UI')
             check("document.querySelectorAll('[data-tsa-list=UNLISTED] [data-hash=\""+'c'*64+"\"]').length===1 && document.querySelector('[data-tsa-list=UNLISTED]').textContent.includes('alias.jar')",'unlisted filenames grouped by hash')
+            # File-type controls are independent from one another and from name searches.
+            check("document.querySelectorAll('#tsa-board .tsa-type-filters').length===3",'each TSA column has type filters')
+            click('[data-tsa-list=BLACKLISTED] .tsa-type-filter[aria-label="BLACKLISTED .jar"]')
+            wait("document.querySelectorAll('[data-tsa-list=BLACKLISTED] .tsa-hash-card').length===0")
+            check("document.querySelectorAll('[data-tsa-list=UNLISTED] .tsa-hash-card').length===2",'type filter does not affect other columns')
+            click('[data-tsa-list=BLACKLISTED] .tsa-type-filter[aria-label="BLACKLISTED .jar"]')
+            wait("document.querySelectorAll('[data-tsa-list=BLACKLISTED] .tsa-hash-card').length===1")
+            click('[data-tsa-list=UNLISTED] .tsa-type-filter[aria-label="UNLISTED .jar"]')
+            wait("document.querySelectorAll('[data-tsa-list=UNLISTED] .tsa-hash-card').length===0")
+            click('[data-tsa-list=UNLISTED] .tsa-type-filter[aria-label="UNLISTED .jar"]')
+            wait("document.querySelectorAll('[data-tsa-list=UNLISTED] .tsa-hash-card').length===2")
             # Each column can search by filename or SHA-256 without filtering its neighbors.
             fill('[data-tsa-list=BLACKLISTED] input[type=search]','observed.jar')
             wait("document.querySelectorAll('[data-tsa-list=BLACKLISTED] .tsa-hash-card').length===1")
