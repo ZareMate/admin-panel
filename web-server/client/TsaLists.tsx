@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Api } from './types';
 import { sortHashesByFilename } from './tsa-sort';
-import { filenameDetectionKeyword, matchesTsaNameOrHash } from './tsa-filename-detection';
+import { filenameDetectionKeyword, matchesTsaNameOrHash, matchesTsaFileType, TSA_FILE_TYPES } from './tsa-filename-detection';
+import type { TsaFileType } from './tsa-filename-detection';
 type Entry={hash:string;type:string;filename:string;playerCount?:number};
 type Snapshot={lists:Record<string,string[]>;changed?:boolean};
 type Names=Record<string,Entry[]>;
@@ -12,6 +13,7 @@ const filenameKey=(value:string)=>value.normalize('NFKC').toLowerCase().replace(
 export function TsaLists({api,canEdit}:{api:Api;canEdit:boolean}) {
  const [snapshot,setSnapshot]=useState<Snapshot|null>(null),[settings,setSettings]=useState<TsaSetting[]>([]),[names,setNames]=useState<Names>({}),[unlisted,setUnlisted]=useState<Entry[]>([]),[scanned,setScanned]=useState(0);
  const [error,setError]=useState(''),[inventoryError,setInventoryError]=useState(''),[status,setStatus]=useState(''),[busy,setBusy]=useState(false),[queries,setQueries]=useState<Record<string,string>>({});
+ const [typeFilters,setTypeFilters]=useState<Record<string,TsaFileType[]>>({});
  const [pages,setPages]=useState<Record<string,number>>({}),[dragging,setDragging]=useState<string|null>(null),[over,setOver]=useState<string|null>(null);
  const [unlistedPage,setUnlistedPage]=useState(0),[returned,setReturned]=useState<Record<string,Entry[]>>({});
  const dragged=useRef<string|null>(null);
@@ -61,8 +63,19 @@ export function TsaLists({api,canEdit}:{api:Api;canEdit:boolean}) {
  const enforced=new Set(list('ENFORCEMENT')),allowed=new Set(list('ALLOWED')),blacklisted=new Set(list('BLACKLISTED'));
  const blacklist=sortHashesByFilename([...new Set([...blacklisted,...enforced])].filter(hash=>!allowed.has(hash)),names,enforced);
  const allowlist=sortHashesByFilename([...allowed],names);
- const matches=(hash:string,column:string,entries:Entry[]=names[hash]??[])=>
-  matchesTsaNameOrHash(hash,entries.map(entry=>entry.filename),queries[column]??'');
+ const matches=(hash:string,column:string,entries:Entry[]=names[hash]??[])=>{
+  const filenames=entries.map(entry=>entry.filename);
+  return matchesTsaNameOrHash(hash,filenames,queries[column]??'')
+   &&matchesTsaFileType(filenames,new Set(typeFilters[column]??TSA_FILE_TYPES));
+ };
+ const toggleType=(column:string,type:TsaFileType)=>{
+  setTypeFilters(previous=>{
+   const selected=previous[column]??[...TSA_FILE_TYPES];
+   return {...previous,[column]:selected.includes(type)?selected.filter(value=>value!==type):[...selected,type]};
+  });
+  setPages(previous=>({...previous,[column]:0}));
+  if(column==='UNLISTED')setUnlistedPage(0);
+ };
  const setFilter=(column:string,value:string)=>{setQueries(previous=>({...previous,[column]:value}));setPages(previous=>({...previous,[column]:0}));if(column==='UNLISTED')setUnlistedPage(0);};
  const allowedNames=new Set(list('FILENAMES').map(filenameKey));
  const settingNames=(key:string):string[]=>{
@@ -107,6 +120,7 @@ export function TsaLists({api,canEdit}:{api:Api;canEdit:boolean}) {
    onDrop={event=>{event.preventDefault();const hash=dragged.current;dragged.current=null;setDragging(null);setOver(null);if(hash&&canEdit&&!busy)void move(hash,id);}}>
    <header><h2>{title as string}</h2><span className="pill">{hashes.length}</span></header>
    <input className="board-search" type="search" aria-label={'Filter '+title+' by name or hash'} placeholder="Filter by name or hash…" value={queries[id]??''} onChange={event=>setFilter(id,event.target.value)}/>
+   <TypeFilters column={id} selected={typeFilters[id]??TSA_FILE_TYPES} toggle={type=>toggleType(id,type)}/>
    <AddHash id={id} disabled={!snapshot||!canEdit||busy} add={hash=>run([{list:id,action:'add',hash}])}/>
    {hashes.slice(page*PAGE,page*PAGE+PAGE).map(hash=>hashCard(hash,id))}{!hashes.length&&<p className="empty">No matching entries.</p>}
    <Pages page={page} count={hashes.length} change={value=>setPages(previous=>({...previous,[id]:value}))}/>
@@ -119,6 +133,7 @@ export function TsaLists({api,canEdit}:{api:Api;canEdit:boolean}) {
   <header><h2>Unlisted</h2><span className="pill">{unresolved.length}</span></header>
   <p className="muted">Files from the latest cached scans of {scanned} player(s). Drag here to remove a hash from all hash lists. Run /tsa unlisted in-game for fresh inventories.</p>
   <input className="board-search" type="search" aria-label="Filter Unlisted by name or hash" placeholder="Filter by name or hash…" value={queries.UNLISTED??''} onChange={event=>setFilter('UNLISTED',event.target.value)}/>
+  <TypeFilters column="UNLISTED" selected={typeFilters.UNLISTED??TSA_FILE_TYPES} toggle={type=>toggleType('UNLISTED',type)}/>
   {inventoryError&&<p className="error" role="alert">{inventoryError}</p>}
   {unresolved.slice(unlistedCurrent*PAGE,unlistedCurrent*PAGE+PAGE).map(hash=><article className={'card todo-task tsa-hash-card '+(dragging===hash?'dragging':'')} key={hash} data-hash={hash} draggable={canEdit&&!busy} onDragStart={event=>{if((event.target as HTMLElement).closest('button')){event.preventDefault();return;}dragged.current=hash;setDragging(hash);event.dataTransfer.setData('text/plain',hash);event.dataTransfer.effectAllowed='move';}} onDragEnd={()=>{dragged.current=null;setDragging(null);setOver(null);}}>
    <FileLabel hash={hash} entries={candidates.get(hash)}/>
@@ -130,6 +145,14 @@ export function TsaLists({api,canEdit}:{api:Api;canEdit:boolean}) {
   <FilenameEditor entries={list('FILENAMES')} disabled={!canEdit||busy||!snapshot} run={run}/>
  </details>
  </section>;
+}
+function TypeFilters({column,selected,toggle}:{column:string;selected:readonly TsaFileType[];toggle:(type:TsaFileType)=>void}) {
+ return <div className="tsa-type-filters" role="group" aria-label={column+' file type filters'}>
+  {TSA_FILE_TYPES.map(type=><button key={type} type="button" className={'secondary small tsa-type-filter '+(selected.includes(type)?'active':'')}
+   aria-label={column+' '+(type==='other'?'Other':'.'+type)} aria-pressed={selected.includes(type)} onClick={()=>toggle(type)}>
+   {type==='other'?'Other':'.'+type}
+  </button>)}
+ </div>;
 }
 function FileLabel({hash,entries,reason}:{hash:string;entries?:Entry[];reason?:string}) {
  const labels=[...new Set(entries?.map(entry=>entry.filename)??[])];

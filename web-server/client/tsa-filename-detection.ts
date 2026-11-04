@@ -39,3 +39,21 @@ export function matchesTsaNameOrHash(
  return normalized.length>0&&filenames.some(filename=>
   sanitizeTsaFilename(filename).includes(normalized));
 }
+
+export type TsaFileType='jar'|'zip'|'other';
+export const TSA_FILE_TYPES:readonly TsaFileType[]=['jar','zip','other'];
+
+/** File suffix categories are independent of TSA's keyword matching sanitizer. */
+export function tsaFileType(filename:string):TsaFileType {
+ const clean=filename.replace(/§./gu,'').trim().toLowerCase();
+ if(/\.jar(?:\.disabled)?$/.test(clean))return 'jar';
+ if(/\.zip(?:\.disabled)?$/.test(clean))return 'zip';
+ return 'other';
+}
+
+/** A hash can have multiple historical filenames, so match any selected category. */
+export function matchesTsaFileType(filenames:readonly string[],selected:ReadonlySet<TsaFileType>):boolean {
+ if(!selected.size)return false;
+ if(!filenames.length)return selected.has('other');
+ return filenames.some(filename=>selected.has(tsaFileType(filename)));
+}

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sanitizeTsaFilename, filenameDetectionKeyword, matchesTsaNameOrHash } from '../client/tsa-filename-detection.js';
+import { sanitizeTsaFilename, filenameDetectionKeyword, matchesTsaNameOrHash, tsaFileType, matchesTsaFileType } from '../client/tsa-filename-detection.js';
 
 test('matches TSA filename sanitization, including Minecraft formatting codes and Unicode',()=>{
  assert.equal(sanitizeTsaFilename('§b§lSpectator Xray §7v1.2.1.zip'),'blspectatorxray7v121zip');
@@ -36,4 +36,27 @@ test('hash searches stay case-insensitive and support prefixes',()=>{
  assert.equal(matchesTsaNameOrHash(hash,[],'deadbeef'),false);
  assert.equal(matchesTsaNameOrHash(hash,['file.jar'],'-----'),false);
  assert.equal(matchesTsaNameOrHash(hash,[],'   '),true);
+});
+
+test('TSA file types include case-insensitive disabled jar and zip suffixes',()=>{
+ for(const name of ['foo.jar','foo.JAR','foo.jar.disabled','foo.JAR.DISABLED','§bfoo.jar.disabled'])
+  assert.equal(tsaFileType(name),'jar',name);
+ for(const name of ['pack.zip','pack.ZIP','pack.zip.disabled','pack.ZIP.DISABLED','§aPack.zip.disabled'])
+  assert.equal(tsaFileType(name),'zip',name);
+ for(const name of ['file.txt','file.jar.backup','file.zip.disabled.bak','file','file.disabled',''])
+  assert.equal(tsaFileType(name),'other',name);
+});
+
+test('type filtering supports multiple selections, associated filenames and unknown hashes',()=>{
+ const jar=new Set(['jar'] as const),zip=new Set(['zip'] as const),other=new Set(['other'] as const);
+ assert.equal(matchesTsaFileType(['foo.jar.DISABLED'],jar),true);
+ assert.equal(matchesTsaFileType(['foo.jar.DISABLED'],zip),false);
+ assert.equal(matchesTsaFileType(['foo.zip.DISABLED'],zip),true);
+ assert.equal(matchesTsaFileType(['foo.txt'],other),true);
+ assert.equal(matchesTsaFileType(['foo.jar','foo.zip'],new Set(['jar','zip'] as const)),true);
+ assert.equal(matchesTsaFileType(['foo.jar','foo.zip'],other),false);
+ assert.equal(matchesTsaFileType(['foo.jar','foo.txt'],other),true);
+ assert.equal(matchesTsaFileType([],other),true);
+ assert.equal(matchesTsaFileType([],jar),false);
+ assert.equal(matchesTsaFileType(['foo.jar'],new Set()),false);
 });
