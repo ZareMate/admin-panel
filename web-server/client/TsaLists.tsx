@@ -56,7 +56,7 @@ export function TsaLists({api,canEdit}:{api:Api;canEdit:boolean}) {
  };
  const list=(key:string)=>snapshot?.lists?.[key]??[];
  const enforced=new Set(list('ENFORCEMENT')),allowed=new Set(list('ALLOWED')),blacklisted=new Set(list('BLACKLISTED'));
- const blacklist=sortHashesByFilename([...new Set([...blacklisted,...enforced])].filter(hash=>!allowed.has(hash)),names);
+ const blacklist=sortHashesByFilename([...new Set([...blacklisted,...enforced])].filter(hash=>!allowed.has(hash)),names,enforced);
  const allowlist=sortHashesByFilename([...allowed],names);
  const matches=(hash:string,column:string,entries:Entry[]=names[hash]??[])=>[hash,...entries.map(entry=>entry.filename)]
   .join(' ').toLocaleLowerCase().includes((queries[column]??'').trim().toLocaleLowerCase());
