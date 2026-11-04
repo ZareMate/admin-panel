@@ -14,6 +14,9 @@ interface Backend {
     default JsonObject tsaSettings(StaffActor actor, JsonObject update) throws Exception {
         throw new BridgeFailure(409, "TSA settings API is unavailable");
     }
+    default JsonObject statistics() throws Exception {
+        throw new BridgeFailure(409, "Cheat statistics are unavailable");
+    }
     JsonObject players() throws Exception;
     JsonObject player(UUID id, StaffActor viewer) throws Exception;
     JsonElement mutate(UUID id, StaffActor actor, String action, JsonObject body) throws Exception;
