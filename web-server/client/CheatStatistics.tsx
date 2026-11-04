@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Api } from './types';
 import { calculateCheatStats } from './cheat-stats';
 import type { CheatSnapshot } from './cheat-stats';
@@ -9,7 +9,8 @@ const palette=['#b9e884','#8bd2bc','#87abe4','#e8bf8c','#d29edc','#e3a29a','#b5c
 export function CheatStatistics({api}:{api:Api}) {
  const [snapshot,setSnapshot]=useState<CheatSnapshot|null>(null);
  const [selected,setSelected]=useState<string[]>([]);
- const [initialized,setInitialized]=useState(false);
+ const initialized=useRef(false);
+ const knownTypes=useRef<string[]>([]);
  const [error,setError]=useState('');
  const [loading,setLoading]=useState(false);
  const load=useCallback(async()=>{
@@ -17,11 +18,12 @@ export function CheatStatistics({api}:{api:Api}) {
   try{
    const next=await api<CheatSnapshot>('/stats');
    setSnapshot(next);
-   setSelected(old=>initialized?old.filter(type=>next.types.includes(type)):next.types);
-   setInitialized(true);
+   setSelected(old=>!initialized.current||old.length===knownTypes.current.length?next.types:old.filter(type=>next.types.includes(type)));
+   initialized.current=true;
+   knownTypes.current=next.types;
   }catch(e){setError((e as Error).message);}
   finally{setLoading(false);}
- },[api,initialized]);
+ },[api]);
  useEffect(()=>{
   void load();
   const refresh=setInterval(()=>{if(!document.hidden)void load();},30000);
