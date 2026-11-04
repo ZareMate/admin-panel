@@ -121,6 +121,19 @@ with tempfile.TemporaryDirectory(prefix='react-browser-') as profile:
             wait("document.querySelector('[data-tsa-list=UNLISTED]').textContent.includes('unlisted.jar')")
             check("!document.querySelector('.tsa-hash-lookup') && [...document.querySelectorAll('#tsa-board .todo-column>header h2')].map(e=>e.textContent).join(',')==='Blacklist,Allow list,Unlisted'",'three lists without lookup UI')
             check("document.querySelectorAll('[data-tsa-list=UNLISTED] [data-hash=\""+'c'*64+"\"]').length===1 && document.querySelector('[data-tsa-list=UNLISTED]').textContent.includes('alias.jar')",'unlisted filenames grouped by hash')
+            # Each column can search by filename or SHA-256 without filtering its neighbors.
+            fill('[data-tsa-list=BLACKLISTED] input[type=search]','observed.jar')
+            wait("document.querySelectorAll('[data-tsa-list=BLACKLISTED] .tsa-hash-card').length===1")
+            check("document.querySelectorAll('[data-tsa-list=UNLISTED] .tsa-hash-card').length===2",'blacklist name filter leaves unlisted unchanged')
+            fill('[data-tsa-list=UNLISTED] input[type=search]','c'*64)
+            wait("document.querySelectorAll('[data-tsa-list=UNLISTED] .tsa-hash-card').length===1")
+            fill('[data-tsa-list=UNLISTED] input[type=search]','alias.jar')
+            wait("document.querySelectorAll('[data-tsa-list=UNLISTED] .tsa-hash-card').length===1")
+            fill('[data-tsa-list=ALLOWED] input[type=search]','no-such-file')
+            check("document.querySelectorAll('[data-tsa-list=BLACKLISTED] .tsa-hash-card').length===1",'allow filter leaves blacklist unchanged')
+            for column in ('BLACKLISTED','ALLOWED','UNLISTED'):
+                fill('[data-tsa-list='+column+'] input[type=search]','')
+            wait("document.querySelectorAll('[data-tsa-list=UNLISTED] .tsa-hash-card').length===2")
             def drag_tsa(source,target):
                 js("const card=document.querySelector(arguments[0]);const target=document.querySelector(arguments[1]);const transfer=new DataTransfer();card.dispatchEvent(new DragEvent('dragstart',{bubbles:true,dataTransfer:transfer}));target.dispatchEvent(new DragEvent('dragover',{bubbles:true,cancelable:true,dataTransfer:transfer}));target.dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:transfer}));card.dispatchEvent(new DragEvent('dragend',{bubbles:true,dataTransfer:transfer}));",source,target)
             if os.environ.get('PANEL_TSA_READ_ONLY')=='1':
