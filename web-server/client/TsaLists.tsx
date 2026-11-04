@@ -170,7 +170,7 @@ export function TsaLists({api,canEdit}:{api:Api;canEdit:boolean}) {
  return <section id="tsa-board"><div className="card section-header"><div><h2>Hash and filename lists</h2><p className="muted">Drag a hash between columns, or use Allow and Blacklist. Enforcement follows TSA’s global mode.</p></div><button className="secondary" disabled={busy} onClick={()=>void load()}>Reload lists</button></div>
  {!canEdit&&<p className="notice">You have read-only access to TSA lists.</p>}{error&&<p className="banner error" role="alert">{error}</p>}{status&&<p className="notice" role="status">{status}</p>}
  <div className="tsa-pagination-control"><label htmlFor="tsa-page-size">Reference page size</label><select id="tsa-page-size" aria-label="TSA reference page size" value={pageSize} onChange={event=>{setPageSize(Number(event.target.value));setPages({});setUnlistedPage(0);}}>{PAGE_OPTIONS.map(size=><option key={size} value={size}>{size} items</option>)}</select><span className="muted">The shortest {pageSize}-item column sets a shared card-height budget.</span></div>
- <div className="todo-columns tsa-columns">{[['BLACKLISTED','Blacklist',blacklist],['ALLOWED','Allow list',allowlist]] .map(([key,title,values])=>{
+ <div className="todo-columns tsa-columns">{[['BLACKLISTED','Blacklist'],['ALLOWED','Allow list']] .map(([key,title])=>{
   const id=key as string,hashes=filtered[id],paging=stateFor(id,pages[id]??0);
   return <section className={'todo-column '+(over===id?'drop-target':'')} data-tsa-list={id} key={id}
    onDragOver={event=>{if(canEdit&&!busy&&dragged.current){event.preventDefault();event.dataTransfer.dropEffect='move';setOver(id);}}}
