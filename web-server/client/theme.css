@@ -165,6 +165,9 @@ tbody tr:hover { background: rgba(185, 232, 132, .035); }
 .todo-column.drop-target { background: #203228; }
 .board-search { margin: 18px 0; }
 .tsa-hash-card { background: var(--surface-raised); }
+.tsa-hash-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; min-width: 0; }
+.tsa-hash-meta .tsa-hash { overflow-wrap: anywhere; }
+.tsa-blacklist-reason { font-size: 11px; }
 .tsa-hash { color: #a6b9b7; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 10px; }
 .tsa-filename-list { background: var(--panel); }
 .tsa-settings-details { border: 1px solid var(--line); background: var(--panel); border-radius: 12px; overflow: hidden; }
