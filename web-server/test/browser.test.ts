@@ -124,3 +124,34 @@ test('moving overlapping allowed hashes clears punishment sources before revokin
   assert.equal(operations.length,6);
  }finally{await f.close();}
 });
+
+test('TSA uses a shared card-height budget and adjustable reference page size',{timeout:90000},async()=>{
+ const f=await fixture();try{
+  const hash=(value:number)=>value.toString(16).padStart(64,'0');
+  const blacklist=Array.from({length:32},(_,i)=>hash(i+1));
+  const allowed=Array.from({length:32},(_,i)=>hash(i+101));
+  const unlisted=Array.from({length:32},(_,i)=>({
+   hash:hash(i+201),type:'MOD',filename:'unlisted-'+i+'.jar',playerCount:1
+  }));
+  const name=(value:string)=>{
+   const n=parseInt(value,16);
+   return n<=32?'ray-'+n+'-long-named-resource-pack-with-description.jar':
+    n<=132?'allowed-'+n+'.jar':'unlisted-'+n+'.jar';
+  };
+  await connect(f,(request,socket)=>{
+   if(request.operation==='tsa-settings'){
+    socket.send(JSON.stringify({id:request.id,result:{settings:[{key:'FILENAME_DETECTION_KEYWORDS',type:'list',value:['ray'],secret:false}]}}));return;
+   }
+   if(request.operation==='tsa-unlisted'){
+    socket.send(JSON.stringify({id:request.id,result:{entries:unlisted,playersScanned:1}}));return;
+   }
+   if(request.operation==='tsa-names'){
+    socket.send(JSON.stringify({id:request.id,result:{names:Object.fromEntries(request.hashes.map((item:string)=>[item,[{hash:item,type:'MOD',filename:name(item)}]]))}}));return;
+   }
+   socket.send(JSON.stringify({id:request.id,result:{lists:{BLACKLISTED:blacklist,ALLOWED:allowed,ENFORCEMENT:blacklist,FILENAMES:[]}}}));
+  });
+  const session=f.auth.create({name:'List auditor',rank:'custom',uuid:'00000000-0000-0000-0000-000000000009',permissions:['panel.access','tab.tsaConfig']});
+  const browser=spawn('python3',['test/browser.py',f.url,'tsa-pagination'],{stdio:'inherit',env:{...process.env,PANEL_TEST_SESSION:session}});
+  const [code]=await once(browser,'exit');assert.equal(code,0,'TSA measured pagination browser checks');
+ }finally{await f.close();}
+});
