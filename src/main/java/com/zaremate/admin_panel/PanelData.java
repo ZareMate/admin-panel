@@ -92,6 +92,11 @@ final class PanelData {
         return root.toString();
     }
 
+    JsonObject buildStatistics(MinecraftServer server) throws Exception {
+        Map<UUID,String> all=collectPlayers(server);
+        return TsaStatistics.summarize(all.keySet(),tsaRecords(),TsaStatistics.configuredKeywords());
+    }
+
     private Map<UUID, JsonObject> tsaRecords() {
         if (!classPresent("com.zaremate.tsa_anticheat.api.TsaAnticheatAPI")) return Map.of();
         try { return tsaReports.read(); }
