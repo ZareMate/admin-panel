@@ -55,11 +55,17 @@ export function TsaLists({api,canEdit}:{api:Api;canEdit:boolean}) {
  };
  const list=(key:string)=>snapshot?.lists?.[key]??[];
  const enforced=new Set(list('ENFORCEMENT')),allowed=new Set(list('ALLOWED')),blacklisted=new Set(list('BLACKLISTED'));
- const label=(hash:string)=>names[hash]?.map(entry=>entry.filename).sort((a,b)=>a.localeCompare(b,undefined,{sensitivity:'base'}))[0]??'';
- const blacklist=[...new Set([...blacklisted,...enforced])].filter(hash=>!allowed.has(hash)).sort((left,right)=>
-  Number(enforced.has(right))-Number(enforced.has(left))||
-  Number(!label(left))-Number(!label(right))||
-  (label(left)||left).localeCompare(label(right)||right,undefined,{sensitivity:'base'}));
+ // Sort by the filename users actually see, not by enforcement state or SHA-256.
+ // Hashes without a known name always appear after named entries.
+ const label=(hash:string)=>names[hash]?.find(entry=>entry.filename.trim())?.filename.trim()??'';
+ const byFilename=(left:string,right:string)=>{
+  const a=label(left),b=label(right);
+  return Number(!a)-Number(!b)||
+   (a||left).localeCompare(b||right,undefined,{sensitivity:'base'})||
+   left.localeCompare(right);
+ };
+ const blacklist=[...new Set([...blacklisted,...enforced])].filter(hash=>!allowed.has(hash)).sort(byFilename);
+ const allowlist=[...allowed].sort(byFilename);
  const matches=(hash:string,column:string,entries:Entry[]=names[hash]??[])=>[hash,...entries.map(entry=>entry.filename)]
   .join(' ').toLocaleLowerCase().includes((queries[column]??'').trim().toLocaleLowerCase());
  const setFilter=(column:string,value:string)=>{setQueries(previous=>({...previous,[column]:value}));setPages(previous=>({...previous,[column]:0}));if(column==='UNLISTED')setUnlistedPage(0);};
@@ -88,7 +94,7 @@ export function TsaLists({api,canEdit}:{api:Api;canEdit:boolean}) {
  </article>;
  return <section id="tsa-board"><div className="card section-header"><div><h2>Hash and filename lists</h2><p className="muted">Drag a hash between columns, or use Allow and Blacklist. Enforcement follows TSA’s global mode.</p></div><button className="secondary" disabled={busy} onClick={()=>void load()}>Reload lists</button></div>
  {!canEdit&&<p className="notice">You have read-only access to TSA lists.</p>}{error&&<p className="banner error" role="alert">{error}</p>}{status&&<p className="notice" role="status">{status}</p>}
- <div className="todo-columns tsa-columns">{[['BLACKLISTED','Blacklist',blacklist],['ALLOWED','Allow list',list('ALLOWED')]] .map(([key,title,values])=>{
+ <div className="todo-columns tsa-columns">{[['BLACKLISTED','Blacklist',blacklist],['ALLOWED','Allow list',allowlist]] .map(([key,title,values])=>{
   const id=key as string,hashes=(values as string[]).filter(hash=>matches(hash,id)),page=Math.min(pages[id]??0,Math.max(0,Math.ceil(hashes.length/PAGE)-1));
   return <section className={'todo-column '+(over===id?'drop-target':'')} data-tsa-list={id} key={id}
    onDragOver={event=>{if(canEdit&&!busy&&dragged.current){event.preventDefault();event.dataTransfer.dropEffect='move';setOver(id);}}}
