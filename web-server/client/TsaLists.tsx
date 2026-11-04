@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Api } from './types';
 import { sortHashesByFilename } from './tsa-sort';
+import { filenameDetectionKeyword } from './tsa-filename-detection';
 type Entry={hash:string;type:string;filename:string;playerCount?:number};
 type Snapshot={lists:Record<string,string[]>;changed?:boolean};
 type Names=Record<string,Entry[]>;
+type TsaSetting={key:string;value?:unknown};
 type Change={list:string;action:string;hash?:string;name?:string};
 const PAGE=30;
 const filenameKey=(value:string)=>value.normalize('NFKC').toLowerCase().replace(/[^a-z0-9]/g,'');
 export function TsaLists({api,canEdit}:{api:Api;canEdit:boolean}) {
- const [snapshot,setSnapshot]=useState<Snapshot|null>(null),[names,setNames]=useState<Names>({}),[unlisted,setUnlisted]=useState<Entry[]>([]),[scanned,setScanned]=useState(0);
+ const [snapshot,setSnapshot]=useState<Snapshot|null>(null),[settings,setSettings]=useState<TsaSetting[]>([]),[names,setNames]=useState<Names>({}),[unlisted,setUnlisted]=useState<Entry[]>([]),[scanned,setScanned]=useState(0);
  const [error,setError]=useState(''),[inventoryError,setInventoryError]=useState(''),[status,setStatus]=useState(''),[busy,setBusy]=useState(false),[queries,setQueries]=useState<Record<string,string>>({});
  const [pages,setPages]=useState<Record<string,number>>({}),[dragging,setDragging]=useState<string|null>(null),[over,setOver]=useState<string|null>(null);
  const [unlistedPage,setUnlistedPage]=useState(0),[returned,setReturned]=useState<Record<string,Entry[]>>({});
@@ -21,7 +23,8 @@ export function TsaLists({api,canEdit}:{api:Api;canEdit:boolean}) {
     // Reset the cache with the new snapshot so its lookup effect can refill names.
     namesRef.current={};setNames({});setReturned({});setSnapshot(result);
    }).catch(e=>setError((e as Error).message)),
-   api<{entries:Entry[];playersScanned:number}>('/tsa/unlisted').then(result=>{setUnlisted(result.entries);setScanned(result.playersScanned);}).catch(e=>setInventoryError((e as Error).message))
+   api<{entries:Entry[];playersScanned:number}>('/tsa/unlisted').then(result=>{setUnlisted(result.entries);setScanned(result.playersScanned);}).catch(e=>setInventoryError((e as Error).message)),
+   api<{settings:TsaSetting[]}>('/tsa/settings').then(result=>setSettings(result.settings??[])).catch(e=>setError((e as Error).message))
   ]);setBusy(false);
  },[api]);
  useEffect(()=>{void load();},[load]);
@@ -62,6 +65,13 @@ export function TsaLists({api,canEdit}:{api:Api;canEdit:boolean}) {
   .join(' ').toLocaleLowerCase().includes((queries[column]??'').trim().toLocaleLowerCase());
  const setFilter=(column:string,value:string)=>{setQueries(previous=>({...previous,[column]:value}));setPages(previous=>({...previous,[column]:0}));if(column==='UNLISTED')setUnlistedPage(0);};
  const allowedNames=new Set(list('FILENAMES').map(filenameKey));
+ const settingNames=(key:string):string[]=>{
+  const value=settings.find(setting=>setting.key===key)?.value;
+  return Array.isArray(value)?value.filter((item):item is string=>typeof item==='string'):[];
+ };
+ const keywordSettingsPresent=settings.some(setting=>setting.key==='FILENAME_DETECTION_KEYWORDS');
+ const detectionKeywords=settingNames('FILENAME_DETECTION_KEYWORDS');
+ const exemptions=[...list('FILENAMES'),...settingNames('RAY_FILENAME_ALLOWLIST')];
  const candidates=new Map<string,Entry[]>();
  for(const entry of [...unlisted,...Object.values(returned).flat()]) {
   if(allowedNames.has(filenameKey(entry.filename)))continue;
@@ -76,7 +86,10 @@ export function TsaLists({api,canEdit}:{api:Api;canEdit:boolean}) {
  const hashCard=(hash:string,column:string)=><article className={'card todo-task tsa-hash-card '+(dragging===hash?'dragging':'')} key={hash} data-hash={hash} draggable={canEdit&&!busy}
   onDragStart={event=>{if((event.target as HTMLElement).closest('button,input,select,textarea')){event.preventDefault();return;}event.dataTransfer.setData('text/plain',hash);event.dataTransfer.effectAllowed='move';dragged.current=hash;setDragging(hash);}}
   onDragEnd={()=>{dragged.current=null;setDragging(null);setOver(null);}}>
-  <FileLabel hash={hash} entries={names[hash]} />
+  <FileLabel hash={hash} entries={names[hash]} reason={column==='BLACKLISTED'&&blacklisted.has(hash)&&keywordSettingsPresent
+   ? (()=>{const keyword=filenameDetectionKeyword((names[hash]??[]).map(entry=>entry.filename),detectionKeywords,exemptions);
+      return keyword?'Filename contains "'+keyword+'" (current rule)':'Reason unknown (no current keyword match)';})()
+   : undefined}/>
   {column==='BLACKLISTED'&&!blacklisted.has(hash)&&<p className="muted">Enforcement only</p>}
   <div className="board-actions">
    {column==='BLACKLISTED'&&<button className={'secondary small enforcement-toggle '+(enforced.has(hash)?'enabled':'')} role="switch" aria-checked={enforced.has(hash)} aria-label={'Enforcement for '+hash} disabled={!canEdit||busy} onClick={()=>void run([{list:'ENFORCEMENT',action:enforced.has(hash)?'remove':'add',hash}],enforced.has(hash)?'Enforcement disabled for this hash.':'Enforcement enabled for this hash.')}>Enforcement {enforced.has(hash)?'on':'off'}</button>}
@@ -118,9 +131,11 @@ export function TsaLists({api,canEdit}:{api:Api;canEdit:boolean}) {
  </details>
  </section>;
 }
-function FileLabel({hash,entries}:{hash:string;entries?:Entry[]}) {
+function FileLabel({hash,entries,reason}:{hash:string;entries?:Entry[];reason?:string}) {
  const labels=[...new Set(entries?.map(entry=>entry.filename)??[])];
- return <div className="tsa-file-label"><strong>{labels.length?labels.join(', '):entries?'Unknown filename':'Loading filename…'}</strong><small className="tsa-hash">{hash}</small></div>;
+ return <div className="tsa-file-label"><strong>{labels.length?labels.join(', '):entries?'Unknown filename':'Loading filename…'}</strong>
+  <div className="tsa-hash-meta"><small className="tsa-hash">{hash}</small>{reason&&<small className="muted tsa-blacklist-reason">{reason}</small>}</div>
+ </div>;
 }
 function Pages({page,count,change}:{page:number;count:number;change:(value:number)=>void}) {
  if(count<=PAGE)return null;return <div className="board-actions"><button className="secondary small" disabled={!page} onClick={()=>change(page-1)}>Previous</button><span>{page+1} / {Math.ceil(count/PAGE)}</span><button className="secondary small" disabled={(page+1)*PAGE>=count} onClick={()=>change(page+1)}>Next</button></div>;

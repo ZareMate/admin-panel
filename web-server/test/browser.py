@@ -118,6 +118,8 @@ with tempfile.TemporaryDirectory(prefix='react-browser-') as profile:
             text_click('Reload lists')
             wait("!document.querySelector('#tsa-board .section-header button').disabled && document.querySelector('[data-tsa-list=BLACKLISTED] .tsa-file-label strong').textContent==='observed.jar'")
             check("document.querySelector('[data-tsa-list=BLACKLISTED] .tsa-file-label strong').textContent==='observed.jar'",'filenames reload after list refresh')
+            wait("document.querySelector('[data-tsa-list=BLACKLISTED] .tsa-blacklist-reason')?.textContent.includes('filename contains') || document.querySelector('[data-tsa-list=BLACKLISTED] .tsa-blacklist-reason')?.textContent.includes('Filename contains')")
+            check("document.querySelector('[data-tsa-list=BLACKLISTED] .tsa-blacklist-reason').textContent.includes('observed')",'TSA keyword match shown next to hash')
             wait("document.querySelector('[data-tsa-list=UNLISTED]').textContent.includes('unlisted.jar')")
             check("!document.querySelector('.tsa-hash-lookup') && [...document.querySelectorAll('#tsa-board .todo-column>header h2')].map(e=>e.textContent).join(',')==='Blacklist,Allow list,Unlisted'",'three lists without lookup UI')
             check("document.querySelectorAll('[data-tsa-list=UNLISTED] [data-hash=\""+'c'*64+"\"]').length===1 && document.querySelector('[data-tsa-list=UNLISTED]').textContent.includes('alias.jar')",'unlisted filenames grouped by hash')

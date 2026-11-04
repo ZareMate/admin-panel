@@ -76,7 +76,7 @@ test('TSA hash and filename list editing in Chromium',{timeout:90000},async()=>{
  const f=await fixture();try{
   const lists:Record<string,any[]>={ALLOWED:[],BLACKLISTED:['a'.repeat(64)],ENFORCEMENT:[],FILENAMES:[]};const updates:any[]=[];
   await connect(f,(request,socket)=>{
-   if(request.operation==='tsa-settings'){socket.send(JSON.stringify({id:request.id,result:{settings:[]}}));return;}
+   if(request.operation==='tsa-settings'){socket.send(JSON.stringify({id:request.id,result:{settings:[{key:'FILENAME_DETECTION_KEYWORDS',type:'list',value:['esp','observed'],secret:false},{key:'RAY_FILENAME_ALLOWLIST',type:'list',value:[],secret:false}]}}));return;}
    if(request.operation==='tsa-unlisted'){socket.send(JSON.stringify({id:request.id,result:{entries:[{hash:'a'.repeat(64),filename:'observed.jar',type:'MOD',playerCount:1},{hash:'c'.repeat(64),filename:'unlisted.jar',type:'MOD',playerCount:1},{hash:'c'.repeat(64),filename:'alias.jar',type:'MOD',playerCount:1},{hash:'d'.repeat(64),filename:'other.jar',type:'MOD',playerCount:1}],playersScanned:1}}));return;}
    if(request.operation==='tsa-names'){socket.send(JSON.stringify({id:request.id,result:{names:Object.fromEntries(request.hashes.map((hash:string)=>[hash,[{hash,type:'MOD',filename:'observed.jar'}]]))}}));return;}
    if(request.operation==='tsa-list-update'){
