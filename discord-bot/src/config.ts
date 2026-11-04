@@ -1,4 +1,4 @@
-export interface BotConfig { token:string; guildId:string }
+export interface BotConfig { token:string; guildId:string; authGuildId:string }
 export function loadConfig(env:NodeJS.ProcessEnv=process.env):BotConfig {
   const token=env.DISCORD_BOT_TOKEN?.trim();
   if(!token||/\s/.test(token))throw new Error('Set DISCORD_BOT_TOKEN to the bot token from the Discord Developer Portal.');
@@ -7,5 +7,6 @@ export function loadConfig(env:NodeJS.ProcessEnv=process.env):BotConfig {
     if(!value||!/^[1-9][0-9]{16,19}$/.test(value))throw new Error('Set '+key+' to a Discord ID.');
     return value;
   };
-  return {token,guildId:id('DISCORD_GUILD_ID')};
+  const guildId=id('DISCORD_GUILD_ID');
+  return {token,guildId,authGuildId:env.DISCORD_AUTH_GUILD_ID?.trim()?id('DISCORD_AUTH_GUILD_ID'):guildId};
 }

@@ -1,6 +1,6 @@
 # Admin Panel
 
-A server-side web companion to [ZareMate/admin-gui](https://github.com/ZareMate/admin-gui), for **Minecraft 1.21.1 / NeoForge 21.1.249 / Java 21**. The website runs in a separate Node.js service using Fastify and React. Minecraft opens an outbound authenticated WebSocket connection to it; no panel HTTP port is opened inside Minecraft. Clients only need a browser.
+A standalone server administration panel, for **Minecraft 1.21.1 / NeoForge 21.1.249 / Java 21**. The website runs in a separate Node.js service using Fastify and React. Minecraft opens an outbound authenticated WebSocket connection to it; no panel HTTP port is opened inside Minecraft. Clients only need a browser.
 
 ## Separate Node web app
 
@@ -59,20 +59,20 @@ gradle build
 
 The default build uses the sibling repositories’ built jars:
 
-- `../admin-gui/build/libs/admin_gui-2.0.0.jar`
+- `../admin-notes/build/libs/admin_notes-2.0.0.jar`
 - `../punish/build/libs/punish-1.0.0.jar`
 
 To build from another checkout:
 
 ```sh
-gradle build -PadminGuiJar=/absolute/path/admin_gui-2.0.0.jar -PpunishJar=/absolute/path/punish-1.0.0.jar
+gradle build -PadminNotesJar=/absolute/path/admin_notes-2.0.0.jar -PpunishJar=/absolute/path/punish-1.0.0.jar
 ```
 
-Both jars are required at compile time and are **not bundled**. Output: `build/libs/admin_panel-2.1.0.jar`. The default build targets Admin GUI 2.0.0 and the Punish API including `PunishService.removeOffense`.
+Both jars are required at compile time and are **not bundled**. Output: `build/libs/admin_panel-2.1.0.jar`. The default build targets Admin Notes 2.0.0 and the Punish API including `PunishService.removeOffense`.
 
 ## Install and configure Discord login
 
-1. Replace the old panel jar in the dedicated server’s `mods/` folder with `admin_panel-2.1.0.jar`. Keep Admin GUI and the desired integration mods installed; remove older panel jars.
+1. Replace the old panel jar in the dedicated server’s `mods/` folder with `admin_panel-2.1.0.jar`. Install Admin Notes 2.0.0 or newer for player notes and the desired integration mods; remove older panel jars.
 2. Create/select an application in the [Discord Developer Portal](https://discord.com/developers/applications). Copy its OAuth2 **client ID** and **client secret** into the server configuration. A bot token is not needed.
 3. Register the **exact** OAuth2 redirect URI `<origin>/api/auth/discord/callback`. For the current LAN origin this is `http://10.0.0.1:8080/api/auth/discord/callback`. If Discord does not accept your chosen HTTP redirect, use the HTTPS proxy setup in the Node deployment guide and register that HTTPS origin instead.
 4. Merge the settings below into `config/admin-panel.properties`, set `enabled=true` on the web host and restart the Node service. The browser shows **Continue with Discord**.
@@ -144,7 +144,7 @@ All mutation checks run server-side. Game/mod API access runs on the Minecraft s
 - Each mutation writes a durable `requested` record before invoking the mod, then its result. A timeout or exception may leave execution unconfirmed: inspect the player and audit before retrying. Request IDs prevent resubmission within the current server/session lifetime; they are not a cross-restart exactly-once guarantee.
 - Offense case removal is supported. Direct warnings, kick records, mutes and bans can also be removed in the web UI with `punish.remove`. IP-based punishment creation and arbitrary server commands are not exposed.
 - History lists records belonging to the selected UUID, with IP values hidden. It is not a complete cross-account IP investigation view.
-- Player discovery and integration availability follow Admin GUI’s APIs. An unavailable integration record can mean the optional mod is absent, incompatible, or has no data for that player.
+- Player discovery combines cached profiles, online players, and integration records. Integrations use their mods’ APIs directly. An unavailable integration record can mean the optional mod is absent, incompatible, or has no data for that player.
 - The Fastify web service and Java bridge bound request sizes, pending commands and live subscriptions. Large snapshots are batched on both WebSocket hops; see the [transport limits](web-server/README.md#batched-data-transport).
 ## Automated tests
 

@@ -176,7 +176,7 @@ final class PanelData {
             Throwable cause = rootCause(ex);
             String msg = cause.getClass().getSimpleName() + ": " + String.valueOf(cause.getMessage());
             debug.addProperty("ass.error", msg);
-            LOG.warn("Admin GUI ASS API failed for {}", uuid, cause);
+            LOG.warn("Admin Panel ASS API failed for {}", uuid, cause);
         }
         return o;
     }
@@ -230,7 +230,7 @@ final class PanelData {
             Throwable cause = rootCause(ex);
             String msg = cause.getClass().getSimpleName() + ": " + String.valueOf(cause.getMessage());
             debug.addProperty("punish.error", msg);
-            LOG.warn("Admin GUI Punish API failed for {}", uuid, cause);
+            LOG.warn("Admin Panel Punish API failed for {}", uuid, cause);
             o.addProperty("available", false);
             o.add("offenses", offenses);
             o.add("history", history);
@@ -355,7 +355,7 @@ final class PanelData {
             Throwable cause = rootCause(ex);
             String msg = cause.getClass().getSimpleName() + ": " + String.valueOf(cause.getMessage());
             debug.addProperty("teams.error", msg);
-            LOG.warn("Admin GUI FTB Teams API failed for {}", uuid, cause);
+            LOG.warn("Admin Panel FTB Teams API failed for {}", uuid, cause);
         }
         return o;
     }
@@ -392,7 +392,7 @@ final class PanelData {
             Throwable cause = rootCause(ex);
             String msg = cause.getClass().getSimpleName() + ": " + String.valueOf(cause.getMessage());
             debug.addProperty("discord.error", msg);
-            LOG.warn("Admin GUI Discord API failed for {}", uuid, cause);
+            LOG.warn("Admin Panel Discord API failed for {}", uuid, cause);
         }
         return o;
     }
@@ -435,7 +435,7 @@ final class PanelData {
             Throwable cause = rootCause(ex);
             String msg = cause.getClass().getSimpleName() + ": " + String.valueOf(cause.getMessage());
             debug.addProperty("clockin.error", msg);
-            LOG.warn("Admin GUI ClockIn API/reflection failed for {}", uuid, cause);
+            LOG.warn("Admin Panel ClockIn API/reflection failed for {}", uuid, cause);
         }
         return o;
     }

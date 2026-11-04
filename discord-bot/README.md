@@ -12,7 +12,8 @@ Requires Node.js 22.12 or newer.
 
 ```dotenv
 DISCORD_BOT_TOKEN=YOUR_BOT_TOKEN
-DISCORD_GUILD_ID=YOUR_SERVER_ID
+DISCORD_GUILD_ID=YOUR_MESSAGING_SERVER_ID
+DISCORD_AUTH_GUILD_ID=YOUR_AUTH_SERVER_ID
 ```
 
 Use the bot token from the **Bot** page, not the panel's OAuth client secret. Enable Discord Developer Mode to copy your server ID.
@@ -78,3 +79,26 @@ The panel lists active and archived threads with forum tags and can read their c
 Set `SUGGESTIONS_WEBHOOK_URL` to a webhook created in the suggestions forum channel (Edit Channel → Integrations → Webhooks) to let admins with `suggestions.create` / `suggestions.status` / `suggestions.delete` add suggestions, set their status (Denied, Done, Under consideration, Maybe next season, Waiting for update, Testing, Poll) and delete them from the panel. The bot posts new suggestions through the webhook and, on a status change, edits that webhook message's trailing `**Status:** …` line; it refuses a webhook belonging to another channel. Webhooks can only edit their own messages, so suggestions posted by members cannot receive a status. Deleting a thread needs **Manage Threads**. Keep the webhook URL secret.
 
 Suggestion replies require Send Messages in Threads in the configured forum. They use the existing staff signature and nonce deduplication; the bot verifies forum membership and rejects archived/locked threads before sending.
+
+
+Minecraft in-game login uses the existing authenticated panel command connection.
+Deploy the updated bot and web service together. The bot fetches fresh member
+roles in its configured `DISCORD_AUTH_GUILD_ID` (defaults to `DISCORD_GUILD_ID`), which must equal the panel's
+`discord.guild-id`. No bot token is shared with Minecraft or browser clients.
+
+`DISCORD_GUILD_ID` continues to control messages, tickets, suggestions and channel listing.
+`DISCORD_AUTH_GUILD_ID` controls only Minecraft login role lookups and must match
+the web panel `discord.guild-id`. If omitted, it defaults to the messaging guild.
+Invite the bot to both guilds when they differ, then restart the bot after changing `.env`.
+
+
+Minecraft login diagnostics include a non-secret `loginId` shared with the
+Minecraft server and the other service. Follow that ID to see ticket issuance,
+bot guild/member lookup, rank authorization and session creation. Failures carry
+specific reason codes such as `login-member-missing`, `login-guild-inaccessible`,
+`login-guild-mismatch`, `login-membership-pending` or `login-rank-denied`.
+Bot logs include the failed stage and elapsed time; web logs include UUID, Discord
+ID and auth guild, and rank-denial logs show configured versus member role IDs.
+Tickets, session/CSRF cookies, bot/bridge secrets and raw upstream error bodies
+are never logged. Deploy and restart the rebuilt bot and web service together
+to receive the specific error messages rather than the old generic 502.

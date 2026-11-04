@@ -15,11 +15,11 @@ runs {
     server { argument '--nogui' }
 }
 configurations { runtimeClasspath.extendsFrom localRuntime }
-def adminGuiJar = providers.gradleProperty('adminGuiJar').getOrElse('../admin-gui/build/libs/admin_gui-2.0.0.jar')
+def adminNotesJar = providers.gradleProperty('adminNotesJar').getOrElse('../admin-notes/build/libs/admin_notes-2.0.0.jar')
 def punishJar = providers.gradleProperty('punishJar').getOrElse('../punish/build/libs/punish-1.0.0.jar')
 dependencies {
     implementation 'net.neoforged:neoforge:21.1.249'
-    compileOnly files(adminGuiJar, punishJar)
+    compileOnly files(adminNotesJar, punishJar)
 }
 tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }
 // Executable Java contract tests and real Node/React integration tests replace JUnit.

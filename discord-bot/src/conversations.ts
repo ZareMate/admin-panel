@@ -1,3 +1,4 @@
+import { loginMember, LoginLookupError } from './minecraft-login.js';
 import { suggestionCommand, suggestionThread, SuggestionError, SUGGESTION_ACTIONS } from './suggestions.js';
 import { staffSignature } from './signature.js';
 import { authorProfiles, profile } from './profiles.js';
@@ -12,7 +13,8 @@ export async function messageView(m:Message,format:ReturnType<typeof mentionForm
  return {rawContent:m.content,mentions:{...format.mentions},id:m.id,...(resolveProfile?await resolveProfile(m):profile(m)),bot:m.author.bot,content,createdAt:m.createdTimestamp,editedAt:m.editedTimestamp,
   attachments:[...m.attachments.values()].map(a=>({name:a.name,url:a.url,contentType:a.contentType,size:a.size,width:a.width,height:a.height,spoiler:a.spoiler})),embeds};
 }
-export async function conversationCommand(guild:Guild,config:TicketConfig,c:Record<string,unknown>) {
+export async function conversationCommand(guild:Guild,config:TicketConfig,c:Record<string,unknown>,authGuildId= guild.id) {
+ if(c.action==='minecraft-login-member')return loginMember(guild,authGuildId,c);
  if(SUGGESTION_ACTIONS.includes(String(c.action)))return suggestionCommand(guild,config,c);
  const suggestion=c.action==='suggestions-history'||c.action==='suggestions-reply';
  if(suggestion){await suggestionThread(guild,config,c.channel);c={...c,action:c.action==='suggestions-reply'?'reply':'history'};}
@@ -39,7 +41,7 @@ export async function conversationCommand(guild:Guild,config:TicketConfig,c:Reco
  const message=await channel.send({content:`${c.content}\n\n${signature}`,allowedMentions:{parse:[],repliedUser:false},nonce:c.requestId.replaceAll('-','').slice(0,24),enforceNonce:true});
  return {messages:[await messageView(message,mentionFormatter(guild),authorProfiles(guild))],hasMore:false};
 }
-export function connectConversations(guild:Guild,config:TicketConfig):()=>void {
+export function connectConversations(guild:Guild,config:TicketConfig,authGuildId= guild.id):()=>void {
  if(!config.url||!config.token)return()=>{};
  const url=new URL(config.url);url.pathname='/tickets-commands';
  let stopped=false,socket:WebSocket|undefined,retry:ReturnType<typeof setTimeout>|undefined;
@@ -54,10 +56,10 @@ export function connectConversations(guild:Guild,config:TicketConfig):()=>void {
    try{c=JSON.parse(data.toString());if(typeof c.id!=='string')throw new Error();}catch{ws.close(1008,'Invalid command');return;}
    const send=async(value:unknown)=>{const body=JSON.stringify(value);if(Buffer.byteLength(body)>60000)throw new Error('Message too large');await new Promise<void>((resolve,reject)=>ws.send(body,error=>error?reject(error):resolve()));};
    if(active>=4){await send({type:'done',id:c.id,error:true}).catch(()=>{});return;}active++;
-   try{const result=await conversationCommand(guild,config,c);for(const message of result.messages)await send({type:'item',id:c.id,message});await send({type:'done',id:c.id,hasMore:result.hasMore});}
-   catch(error){await send({type:'done',id:c.id,error:true,errorCode:error instanceof SuggestionError?error.code:undefined}).catch(()=>{});}finally{active--;}
+   try{const result=await conversationCommand(guild,config,c,authGuildId);for(const message of result.messages)await send({type:'item',id:c.id,message});await send({type:'done',id:c.id,hasMore:result.hasMore});}
+   catch(error){await send({type:'done',id:c.id,error:true,errorCode:error instanceof SuggestionError||error instanceof LoginLookupError?error.code:undefined}).catch(()=>{});}finally{active--;}
   });
-  ws.on('open',()=>console.log('Ticket conversations connected.'));
+  ws.on('open',()=>console.log('Ticket conversations connected.',{messagingGuild:guild.id,authGuild:authGuildId}));
   ws.on('error',()=>{});
   ws.on('close',()=>{clearInterval(heartbeat);if(!stopped)retry=setTimeout(connect,3000);});
  };

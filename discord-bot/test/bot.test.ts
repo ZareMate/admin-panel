@@ -6,7 +6,7 @@ import { channelListing, printGuildChannels } from '../src/channels.js';
 
 test('only bot token and guild ID are required; invalid configuration does not expose secrets',()=>{
  const env={DISCORD_BOT_TOKEN:'test-secret',DISCORD_GUILD_ID:'12345678901234567'};
- assert.deepEqual(loadConfig(env),{token:'test-secret',guildId:env.DISCORD_GUILD_ID});
+ assert.deepEqual(loadConfig(env),{token:'test-secret',guildId:env.DISCORD_GUILD_ID,authGuildId:env.DISCORD_GUILD_ID});
  for(const invalid of [{}, {...env,DISCORD_BOT_TOKEN:''},{...env,DISCORD_GUILD_ID:'not-an-id'},{...env,DISCORD_BOT_TOKEN:'secret with spaces'}]){
   assert.throws(()=>loadConfig(invalid),error=>error instanceof Error&&!error.message.includes('test-secret')&&!error.message.includes('secret with spaces'));
  }
@@ -311,4 +311,47 @@ test('admin suggestion commands create via webhook, edit its message status, and
  await assert.rejects(suggestionCommand(guild,config,{action:'suggestions-delete',channel:other,...staff}));
  allowed=false;await assert.rejects(suggestionCommand(guild,config,{action:'suggestions-delete',channel:threadId,...staff}),/suggestions-readonly/);assert.equal(thread.deleted,0);allowed=true;
  assert.deepEqual(await suggestionCommand(guild,config,{action:'suggestions-delete',channel:threadId,...staff}),{messages:[],hasMore:false});assert.equal(thread.deleted,1);
+});
+
+
+test('Minecraft login fetches fresh member roles only from the requested configured guild',async()=>{
+ const {conversationCommand}=await import('../src/conversations.js');
+ const id='12345678901234572',guildId='12345678901234568';let calls=0;
+ const guild={id:guildId,members:{fetch:async(options:unknown)=>{calls++;assert.deepEqual(options,{user:id,force:true,cache:false});return {id,pending:false,user:{username:'Staff',bot:false},roles:{cache:new Map([['12345678901234569',{}]])}};}}} as unknown as Guild;
+ const config={categoryIds:[],rules:[]};
+ const result=await conversationCommand(guild,config,{action:'minecraft-login-member',guildId,discordId:id});
+ assert.deepEqual(result.messages,[{guildId,discordId:id,username:'Staff',pending:false,roles:['12345678901234569']}]);
+ await assert.rejects(conversationCommand(guild,config,{action:'minecraft-login-member',guildId:'12345678901234599',discordId:id}));assert.equal(calls,1);
+});
+
+
+test('separate auth guild config validates IDs and defaults to messaging guild',()=>{
+ const base={DISCORD_BOT_TOKEN:'test-secret',DISCORD_GUILD_ID:'12345678901234567'};
+ assert.equal(loadConfig({...base,DISCORD_AUTH_GUILD_ID:'12345678901234568'}).authGuildId,'12345678901234568');
+ assert.equal(loadConfig({...base,DISCORD_AUTH_GUILD_ID:' '}).authGuildId,base.DISCORD_GUILD_ID);
+ assert.throws(()=>loadConfig({...base,DISCORD_AUTH_GUILD_ID:'invalid'}),/DISCORD_AUTH_GUILD_ID/);
+});
+
+test('authentication uses only the dedicated guild and leaves messaging commands on their guild',async()=>{
+ const authId='12345678901234568',messageId='12345678901234567',user='12345678901234572';let memberLookups=0,guildLookups=0;
+ const authGuild={id:authId,members:{fetch:async()=>{memberLookups++;return {id:user,pending:false,user:{username:'Staff',bot:false},roles:{cache:new Map([['12345678901234569',{}]])}};}}};
+ const guild={id:messageId,client:{guilds:{fetch:async(id:string)=>{guildLookups++;assert.equal(id,authId);return authGuild;}}},members:{fetch:async()=>{throw new Error('Must not authorize from messaging guild');}}} as unknown as Guild;
+ const config={categoryIds:[],rules:[]};
+ const result=await conversationCommand(guild,config,{action:'minecraft-login-member',guildId:authId,discordId:user},authId);
+ assert.equal((result.messages[0] as {guildId:string}).guildId,authId);assert.equal(memberLookups,1);
+ await assert.rejects(conversationCommand(guild,config,{action:'minecraft-login-member',guildId:messageId,discordId:user},authId));
+ assert.equal(guildLookups,1);assert.equal(memberLookups,1);
+ await assert.rejects(conversationCommand(guild,config,{action:'history',channel:'invalid'},authId));
+ assert.equal(guildLookups,1);
+});
+
+
+test('login failure diagnostics preserve correlation and redact upstream secrets',async t=>{
+ const {loginMember,loginFailure}=await import('../src/minecraft-login.js');
+ const records:unknown[][]=[];t.mock.method(console,'info',(...args:unknown[])=>records.push(args));t.mock.method(console,'warn',(...args:unknown[])=>records.push(args));
+ const guildId='12345678901234568',discordId='12345678901234572',loginId='00000000-0000-0000-0000-000000000001';
+ const guild={id:guildId,members:{fetch:async()=>{throw {code:10007,message:'private-token-and-url',requestBody:{token:'private-secret'}};}}} as unknown as Guild;
+ await assert.rejects(loginMember(guild,guildId,{guildId,discordId,loginId}),(e:unknown)=>(e as {code:string}).code==='login-member-missing');
+ const serialized=JSON.stringify(records);assert.ok(serialized.includes(loginId));assert.ok(serialized.includes('member-fetch'));assert.ok(serialized.includes('login-member-missing'));assert.ok(!serialized.includes('private-'));
+ for(const [code,reason] of [[10004,'login-guild-missing'],[50001,'login-guild-inaccessible'],[50013,'login-permission-denied'],[429,'login-rate-limited']] as const)assert.equal(loginFailure({code},'member-fetch'),reason);
 });

@@ -1,7 +1,7 @@
 package com.zaremate.admin_panel;
 
 import com.google.gson.*;
-import com.zaremate.admin_gui.AdminGuiData;
+import com.zaremate.admin_notes.AdminNotesAPI;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.nbt.*;
 import net.minecraft.stats.Stats;
@@ -147,7 +147,7 @@ final class MinecraftBackend implements Backend {
                 return PunishBridge.mutate(server, id, name, actor, action, b);
             }
             if (!ModList.get().isLoaded("admin_notes")) throw new BridgeFailure(409, "Admin Notes mod is not installed");
-            if (action.equals("note-add")) AdminGuiData.addNote(id, actor.uuid(), actor.name(), RequestFields.string(b, "text", 4000));
+            if (action.equals("note-add")) AdminNotesAPI.addNote(id, actor.uuid(), actor.name(), RequestFields.string(b, "text", 4000));
             else {
                 UUID note = UUID.fromString(RequestFields.string(b, "noteId", 36));
                 boolean owned = false;
@@ -156,8 +156,8 @@ final class MinecraftBackend implements Backend {
                     if (n.get("id").getAsString().equals(note.toString()) && n.get("canEdit").getAsBoolean()) owned = true;
                 }
                 if (!owned) throw new BridgeFailure(403, "Only the author can change a non-system note");
-                if (action.equals("note-edit")) AdminGuiData.editNote(id, note, RequestFields.string(b, "text", 4000));
-                else if (action.equals("note-remove")) AdminGuiData.removeNote(id, note);
+                if (action.equals("note-edit")) AdminNotesAPI.editNote(id, note, RequestFields.string(b, "text", 4000));
+                else if (action.equals("note-remove")) AdminNotesAPI.removeNote(id, note);
                 else throw new IllegalArgumentException("Unknown action");
             }
             JsonObject result = new JsonObject(); result.addProperty("status", "saved"); return result;

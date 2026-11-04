@@ -14,13 +14,14 @@ function report(stage:string,error:unknown) {
 }
 try {
   const config=loadConfig(),tickets=ticketConfig();
+  console.info("Discord guild configuration",{messagingGuild:config.guildId,authGuild:config.authGuildId});
   client=new Client({intents:[GatewayIntentBits.Guilds,...(tickets.url?[GatewayIntentBits.GuildMessages,GatewayIntentBits.MessageContent]:[])],presence:{status:'online'},allowedMentions:{parse:[]}});
   client.once(Events.ClientReady,ready=>{
     console.log(`Online as ${JSON.stringify(ready.user.tag)} (${ready.user.id}).`);
     void (async()=>{
       const guild=await ready.guilds.fetch(config.guildId);
       await printGuildChannels(guild);
-      stopConversations=connectConversations(guild,tickets);
+      stopConversations=connectConversations(guild,tickets,config.authGuildId);
       void buildSuggestionIndex(guild,tickets).catch(error=>report('Suggestion index initialization failed',error));
       console.log('Channel listing complete. Bot remains online; press Ctrl+C to stop.');
       let syncing=false;

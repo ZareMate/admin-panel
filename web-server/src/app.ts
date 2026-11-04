@@ -1,3 +1,4 @@
+import { MinecraftLogin } from './minecraft-login.js';
 import { Todos } from './todos.js';
 import { TicketBridge } from './ticket-bridge.js';
 import { Tickets } from './tickets.js';
@@ -26,6 +27,7 @@ export async function createApp(config:Config, options:{bridge?:Bridge;fetcher?:
   await audit.load();
   const images=new Images(resolve(config.dataDir,'assets'),options.bundledDir||resolve('public'),options.fetcher);await images.init();
   const tickets=new Tickets(),ticketBridge=new TicketBridge(),todos=new Todos(resolve(config.dataDir,'todos.json'));await todos.load();
+  const minecraftLogin=new MinecraftLogin(config,ticketBridge,Date.now,(level,event,fields)=>app.log[level]({...fields,event},event));
   const requests=new Map<string,number>();let savingRanks=false,iconJobs=0;
   await app.register(cookie);
   await app.register(websocket,{options:{maxPayload:65536,perMessageDeflate:false}});
@@ -33,7 +35,7 @@ export async function createApp(config:Config, options:{bridge?:Bridge;fetcher?:
   app.addHook('preClose',async()=>{live.close();bridge.close();ticketBridge.close();});
   const sessionCookie={path:'/',httpOnly:true,sameSite:'strict' as const,secure:config.secure,maxAge:28800};
   const oauthCookie={path:'/api/auth/discord',httpOnly:true,sameSite:'lax' as const,secure:config.secure,maxAge:300};
-  const publicRoutes=new Set(['/api/login','/api/auth/method','/api/auth/discord/start','/api/auth/discord/callback']);
+  const publicRoutes=new Set(['/api/login','/api/auth/method','/api/auth/discord/start','/api/auth/discord/callback','/api/auth/minecraft/redeem']);
   app.addHook('onRequest',async(req,reply)=>{
     reply.header('Cache-Control','no-store').header('X-Content-Type-Options','nosniff').header('Referrer-Policy','no-referrer')
       .header('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://cdn.discordapp.com https://media.discordapp.net https://images-ext-1.discordapp.net https://images-ext-2.discordapp.net; media-src 'self' https://cdn.discordapp.com https://media.discordapp.net https://images-ext-1.discordapp.net https://images-ext-2.discordapp.net; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
@@ -44,6 +46,12 @@ export async function createApp(config:Config, options:{bridge?:Bridge;fetcher?:
     if(path==='/tickets-sync'||path==='/tickets-commands') {
       if(!config.ticketSyncToken||!equal(String(req.headers.authorization||''),'Bearer '+config.ticketSyncToken))throw new Failure(401,'Ticket sync authentication rejected');
       if(req.method!=='GET'||req.headers.upgrade?.toLowerCase()!=='websocket')throw new Failure(405,'WebSocket upgrade required');
+      return;
+    }
+    if(path==='/api/auth/minecraft/issue') {
+      if(!equal(String(req.headers.authorization||''),'Bearer '+config.bridgeToken))throw new Failure(401,'Bridge authentication rejected');
+      if(req.method!=='POST')throw new Failure(405,'POST required');
+      if(req.headers['content-type']?.split(';')[0]?.toLowerCase()!=='application/json')throw new Failure(415,'JSON required');
       return;
     }
     if(req.method==='POST') {
@@ -64,6 +72,7 @@ export async function createApp(config:Config, options:{bridge?:Bridge;fetcher?:
   });
   app.setErrorHandler((error,req,reply)=>{
     const err=error as Error & {statusCode?:number};const status=err.statusCode&&err.statusCode>=400&&err.statusCode<=599?err.statusCode:500;
+    if(req.url.split('?')[0]?.startsWith('/api/auth/minecraft/'))req.log.warn({event:'minecraft_login_http_failed',requestId:req.id,status,reason:error instanceof Failure?(error.code||'request-rejected'):'internal-error'},'Minecraft login HTTP request failed');
     if(status===500)req.log.error({name:err.name},'Request failed');
     reply.code(status).send({error:status===500?'Request failed. Check player history and audit before retrying.':err.message});
   });
@@ -176,6 +185,13 @@ export async function createApp(config:Config, options:{bridge?:Bridge;fetcher?:
   app.get('/bridge',{websocket:true},socket=>bridge.attach(socket));
   app.get('/api/live',{websocket:true},(socket,req)=>live.attach(socket,req.cookies.panel_session||''));
   app.get('/api/auth/method',async()=>({mode:config.mode}));
+  app.post('/api/auth/minecraft/issue',async req=>{auth.allowLogin('minecraft-issue:'+uuid(object(req.body).minecraftUuid));return minecraftLogin.issue(req.body);});
+  app.post('/api/auth/minecraft/redeem',async(req,reply)=>{
+    auth.allowLogin(req.ip);const old=req.cookies.panel_session||'';auth.logout(old);live.revoke(old);reply.clearCookie('panel_session',sessionCookie);
+    const user=await minecraftLogin.redeem(object(req.body).ticket);
+    await audit.write(user.name,'minecraft-login',user.uuid,'success',{discordId:user.discordId});
+    const id=auth.create(user);reply.setCookie('panel_session',id,sessionCookie);req.log.info({event:'minecraft_login_session_created',minecraftUuid:user.uuid,discordId:user.discordId,rank:user.rank},'Minecraft login session created');return {};
+  });
   app.post('/api/login',async(req,reply)=>{
     if(config.mode!=='local')throw new Failure(403,'Password login is disabled. Sign in with Discord.');
     auth.allowLogin(req.ip);const body=object(req.body),user=await auth.authenticate(text(body.username,32),text(body.password,256));

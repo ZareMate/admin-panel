@@ -26,7 +26,7 @@ For deployment without source, unpack `build/distributions/admin_panel-2.1.0-web
 
 ## Connect Minecraft
 
-Install `admin_panel-2.1.0.jar` and its required Admin GUI dependency in Minecraft. Configure `config/admin-panel-bridge.properties`:
+Install `admin_panel-2.1.0.jar` in Minecraft. Install Admin Notes 2.0.0 or newer to enable player notes. Configure `config/admin-panel-bridge.properties`:
 
 ```properties
 enabled=true
@@ -192,3 +192,68 @@ Tasks can be dragged between status columns by users with `todo.edit`. A status 
 Suggestions use compact rows with name search on the current page and multi-select tag filters (all selected tags must match). Active and archived suggestions are filtered and sorted by latest message time, newest first, before pagination. Archived listings are cached for 30 seconds; scans exceeding 10,000 entries or the time budget return an error instead of a partially sorted list. Filters persist when switching Active/Archived; Clear filters resets them.
 
 Suggestion pages are cached in the current signed-in view for 30 seconds (up to 30 page/filter combinations). Returning to a fresh cached page is instant. While uncached or expired results load, the previous list and filter controls stay visible with an updating status; stale rows and pagination cannot be activated. Refresh suggestions and successful tag edits invalidate the cache. Leaving the view or signing out discards it.
+
+
+## Minecraft in-game login
+
+Admin GUI 2.4.0 can sign a linked player in without opening Discord OAuth in MCEF.
+Install the updated Admin GUI jar on both clients and Minecraft server, and deploy
+this updated web server/client bundle and Discord bot together. Discord Link on
+Minecraft must expose `DiscordLinkAPI.getPlayerLink(UUID)`.
+
+Set the website URL in the Minecraft server's `config/admin_gui-common.toml`:
+
+```toml
+panelUrl = "https://your-panel.example/"
+```
+
+There is no default URL: an empty setting opens no website. Clients use the URL
+sent by the server, not a local URL setting. Then create the server-only
+`config/admin-gui-server.properties`:
+
+```properties
+enabled=true
+bridge-token=REPLACE_WITH_ADMIN_PANEL_BRIDGE_TOKEN
+```
+
+Use the same secret as the web service's `ADMIN_PANEL_BRIDGE_TOKEN`. This file is
+server-only; never put the secret in client config. Auto-login derives its origin
+from the server's `panelUrl`, which must use the panel's public origin. The old
+`panel-origin` property is ignored and can be removed. Remote auto-login origins
+require HTTPS; HTTP is accepted only for loopback development.
+
+Keep `auth.mode=discord`. The panel asks the connected Discord bot for a fresh
+member lookup in `discord.guild-id` and applies the existing `discord.rank-order`
+and per-rank permissions. The bot's `DISCORD_AUTH_GUILD_ID` must match, and its existing
+`TICKET_SYNC_URL` / `TICKET_SYNC_TOKEN` connection must be configured for command
+requests. Bot credentials remain exclusively in the bot. A mismatch, pending
+membership, unavailable bot, conflicting explicit Minecraft mapping, or lack of
+`panel.access` denies auto-login.
+
+Tickets contain 512 bits of randomness, expire in 60 seconds, replace earlier
+pending tickets for that Minecraft UUID, and can be consumed only once. The panel
+stores only their hashes plus the UUID/Discord identity. The frontend removes the
+ticket from the URL fragment before exchanging it over a same-origin JSON POST,
+then receives the standard HttpOnly session cookie and CSRF token. Role permissions
+are snapshotted at login, as with normal OAuth. Ticket values are never put in URL
+queries, audit records, or application logs.
+
+Unlinked players, missing/disabled configuration, failed ticket issuance, and
+unauthenticated/offline-mode Minecraft servers use the normal login page. An
+issued but expired/denied ticket displays the normal sign-in UI with an error.
+A failed handoff clears any previous browser session to avoid silently retaining
+a different identity. The Minecraft server derives both identities itself and
+rechecks the player connection, permission, and link before sending the ticket;
+clients cannot supply the UUID, Discord ID, or permissions.
+
+
+Minecraft login diagnostics include a non-secret `loginId` shared with the
+Minecraft server and the other service. Follow that ID to see ticket issuance,
+bot guild/member lookup, rank authorization and session creation. Failures carry
+specific reason codes such as `login-member-missing`, `login-guild-inaccessible`,
+`login-guild-mismatch`, `login-membership-pending` or `login-rank-denied`.
+Bot logs include the failed stage and elapsed time; web logs include UUID, Discord
+ID and auth guild, and rank-denial logs show configured versus member role IDs.
+Tickets, session/CSRF cookies, bot/bridge secrets and raw upstream error bodies
+are never logged. Deploy and restart the rebuilt bot and web service together
+to receive the specific error messages rather than the old generic 502.
