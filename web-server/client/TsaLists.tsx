@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Api } from './types';
 import { sortHashesByFilename } from './tsa-sort';
-import { filenameDetectionKeyword } from './tsa-filename-detection';
+import { filenameDetectionKeyword, matchesTsaNameOrHash } from './tsa-filename-detection';
 type Entry={hash:string;type:string;filename:string;playerCount?:number};
 type Snapshot={lists:Record<string,string[]>;changed?:boolean};
 type Names=Record<string,Entry[]>;
@@ -61,8 +61,8 @@ export function TsaLists({api,canEdit}:{api:Api;canEdit:boolean}) {
  const enforced=new Set(list('ENFORCEMENT')),allowed=new Set(list('ALLOWED')),blacklisted=new Set(list('BLACKLISTED'));
  const blacklist=sortHashesByFilename([...new Set([...blacklisted,...enforced])].filter(hash=>!allowed.has(hash)),names,enforced);
  const allowlist=sortHashesByFilename([...allowed],names);
- const matches=(hash:string,column:string,entries:Entry[]=names[hash]??[])=>[hash,...entries.map(entry=>entry.filename)]
-  .join(' ').toLocaleLowerCase().includes((queries[column]??'').trim().toLocaleLowerCase());
+ const matches=(hash:string,column:string,entries:Entry[]=names[hash]??[])=>
+  matchesTsaNameOrHash(hash,entries.map(entry=>entry.filename),queries[column]??'');
  const setFilter=(column:string,value:string)=>{setQueries(previous=>({...previous,[column]:value}));setPages(previous=>({...previous,[column]:0}));if(column==='UNLISTED')setUnlistedPage(0);};
  const allowedNames=new Set(list('FILENAMES').map(filenameKey));
  const settingNames=(key:string):string[]=>{
