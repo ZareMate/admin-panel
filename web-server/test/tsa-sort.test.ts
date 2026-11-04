@@ -32,3 +32,16 @@ test('TSA prioritizes enforcement before filename, then unknown filenames last',
  assert.deepEqual(sortHashesByFilename([unknown,e,z,a],names,new Set([z,a])),[a,z,e,unknown]);
  assert.deepEqual(sortHashesByFilename([unknown,e,z,a],names,new Set([unknown])),[unknown,a,e,z]);
 });
+
+test('TSA ignores Minecraft section-sign formatting codes for filename sorting',()=>{
+ const a='a'.repeat(64),b='b'.repeat(64),c='c'.repeat(64),d='d'.repeat(64),unknown='e'.repeat(64);
+ const names={
+  [a]:[{filename:'§b§lSpectator Xray §7v1.2.1.zip'}],
+  [b]:[{filename:'rainbow.zip'}],
+  [c]:[{filename:'§aTnt Xray.zip'}],
+  [d]:[{filename:'Spectator Xray v1.2.0.zip'}],
+  [unknown]:[{filename:'§b§l'}],
+ };
+ assert.deepEqual(sortHashesByFilename([a,b,c,d,unknown],names),[b,d,a,c,unknown]);
+ assert.deepEqual(sortHashesByFilename([a,b,c,d,unknown],names,new Set([c,a])),[a,c,b,d,unknown]);
+});
