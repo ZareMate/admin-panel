@@ -93,6 +93,19 @@ with tempfile.TemporaryDirectory(prefix='react-browser-') as profile:
         result=request('POST','/session',{'capabilities':{'alwaysMatch':{'browserName':'chrome','goog:chromeOptions':{'args':options},'goog:loggingPrefs':{'browser':'ALL'}}}})
         session=result['sessionId']
         command('/url',{'url':origin})
+        if len(sys.argv)>2 and sys.argv[2]=='stats':
+            command('/cookie',{'cookie':{'name':'panel_session','value':os.environ['PANEL_TEST_SESSION'],'path':'/'}})
+            command('/refresh',{})
+            wait("!!document.querySelector('#stats-nav')")
+            click('#stats-nav')
+            wait("document.querySelector('.cheat-stats-donut-center strong')?.textContent==='30.00%'")
+            check("document.querySelectorAll('.cheat-stats-bar').length===2",'two detection types shown')
+            check("document.querySelector('.cheat-stats-bar')?.textContent.includes('66.67%')",'two out of three detections are xray')
+            click('.cheat-stats-checks label:last-child input')
+            wait("document.querySelector('.cheat-stats-donut-center strong')?.textContent==='20.00%'")
+            check("document.querySelector('.cheat-stats-bar')?.textContent.includes('66.67%')",'type distribution is independent of prevalence filter')
+            print(f'PASS: {checks} cheat statistics browser checks.')
+            raise SystemExit(0)
         if len(sys.argv)>2 and sys.argv[2]=='tsa-safe-moves':
             command('/cookie',{'cookie':{'name':'panel_session','value':os.environ['PANEL_TEST_SESSION'],'path':'/'}})
             command('/refresh',{})
