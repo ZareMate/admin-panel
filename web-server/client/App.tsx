@@ -1,4 +1,5 @@
 import { TsaConfiguration } from './TsaConfiguration';
+import { CheatStatistics } from './CheatStatistics';
 import { PermissionPicker } from './PermissionPicker';
 import { Todos } from './Todos';
 import { Suggestions } from './Suggestions';
@@ -89,14 +90,14 @@ export function App() {
     return()=>{stopped=true;clearTimeout(retry);liveHealthy.current=false;liveSocket.current?.close();liveSocket.current=null;};
   },[signedIn,session?.csrf]);
   useEffect(()=>{const socket=liveSocket.current;if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'select',player:view==='players'?selected:null}));},[selected,view]);
-  const canTsa=has(session,'tab.tsaConfig');
+  const canTsa=has(session,'tab.tsaConfig'),canStats=has(session,'tab.stats');
   const canTodo=has(session,'tab.todo'),canSuggestions=has(session,'tab.suggestions');
   const canTickets=has(session,'tab.tickets');
   const admin=has(session,'tab.audit'),manager=mode==='discord'&&has(session,'access.manage'),canPlayers=has(session,'tab.players');
-  useEffect(()=>{if(!signedIn)return;if(view==='tsa'&&!canTsa||view==='todo'&&!canTodo||view==='suggestions'&&!canSuggestions||view==='tickets'&&!canTickets||view==='audit'&&!admin||view==='access'&&!manager||view==='players'&&!canPlayers){setView(canPlayers?'players':canTickets?'tickets':canTodo?'todo':canSuggestions?'suggestions':admin?'audit':manager?'access':canTsa?'tsa':'none');return;}
+  useEffect(()=>{if(!signedIn)return;if(view==='stats'&&!canStats||view==='tsa'&&!canTsa||view==='todo'&&!canTodo||view==='suggestions'&&!canSuggestions||view==='tickets'&&!canTickets||view==='audit'&&!admin||view==='access'&&!manager||view==='players'&&!canPlayers){setView(canPlayers?'players':canTickets?'tickets':canTodo?'todo':canSuggestions?'suggestions':admin?'audit':manager?'access':canStats?'stats':canTsa?'tsa':'none');return;}
     if(view==='audit')void api<AuditRow[]>('/audit').then(setAudit).catch(e=>setError(e.message));
     if(view==='access')void api<{ranks:Rank[]}>('/access/ranks').then(r=>setRanks(r.ranks)).catch(e=>setError(e.message));
-  },[view,api,signedIn,admin,manager,canPlayers,canTickets,canTodo,canSuggestions,canTsa]);
+  },[view,api,signedIn,admin,manager,canPlayers,canTickets,canTodo,canSuggestions,canTsa,canStats]);
   if(!booted)return <div className="loading">Connecting to Admin Panel…</div>;
   if(!session)return <section id="login" className="login-screen"><div className="login-card"><div className="brand-mark">A</div><h1>Admin Panel</h1><p className="muted">Sign in to manage your Minecraft server.</p>
     {mode==='discord'?<a className="primary" id="discord-login" href="/api/auth/discord/start">Continue with Discord</a>:mode==='local'?<form id="login-form" onSubmit={async e=>{e.preventDefault();const data=Object.fromEntries(new FormData(e.currentTarget));setBusy(true);setLoginError('');try{await api('/login',data);setSession(await api<Session>('/session'));}catch(e){setLoginError((e as Error).message);}finally{setBusy(false);}}}>
@@ -107,6 +108,7 @@ export function App() {
   const changeView=(value:string)=>{setView(value);setError('');};
   return <div id="app"><aside className="sidebar"><div className="brand"><span className="brand-mark">A</span>Admin Panel</div><nav>
     {canPlayers&&<button className={'nav-button '+(view==='players'?'active':'')} onClick={()=>changeView('players')}>Players <span className="count">{players.players.length}</span></button>}
+    {canStats&&<button id="stats-nav" className={'nav-button '+(view==='stats'?'active':'')} onClick={()=>changeView('stats')}>Stats</button>}
     {canTsa&&<button id="tsa-config-nav" className={'nav-button '+(view==='tsa'?'active':'')} onClick={()=>changeView('tsa')}>TSA configuration</button>}{canTickets&&<button id="tickets-nav" className={'nav-button '+(view==='tickets'?'active':'')} onClick={()=>changeView('tickets')}>Tickets</button>}
     {canTodo&&<button id="todo-nav" className={'nav-button '+(view==='todo'?'active':'')} onClick={()=>changeView('todo')}>To-do</button>}
     {canSuggestions&&<button id="suggestions-nav" className={'nav-button '+(view==='suggestions'?'active':'')} onClick={()=>changeView('suggestions')}>Suggestions</button>}
@@ -114,8 +116,9 @@ export function App() {
     {manager&&<button id="access-nav" className={'nav-button '+(view==='access'?'active':'')} onClick={()=>changeView('access')}>Rank access</button>}
   </nav><div className="sidebar-bottom"><div className="connection"><i className={connected?'':'stale'}/>{connected?'Server connected':'Server disconnected'}</div><div className="staff"><span className="avatar staff-avatar">{displayName(session.name).slice(0,2)}</span><div><strong title={session.name}>{displayName(session.name)}</strong><small>{session.rank}</small></div><button id="logout" className="icon-button" aria-label="Sign out" onClick={async()=>{try{await api('/logout',{});setSession(null);setDetail(null);setAction(null);setSelected(null);setFilter('all');setQuery('');setView('players');setPlayers({players:[],serverPlayers:0,maxPlayers:0,punishAvailable:false});detailVersion.current++;}catch(e){report(e);}}}>↪</button></div></div></aside>
     <main><header className="topbar"><strong>Minecraft administration</strong><span>{updated?'Updated '+new Date(updated).toLocaleTimeString():'Waiting for server'}</span></header><div className="page">
-      <div className="page-heading"><div><h1>{view==='tsa'?'TSA configuration':view==='players'?'Player directory':view==='audit'?'Audit log':view==='access'?'Discord rank access':view==='tickets'?'Tickets':view==='todo'?'Developer to-do':view==='suggestions'?'Suggestions':'Panel'}</h1><p className="muted">{view==='players'?'Online and known offline players':'Staff administration'}</p></div><button id="refresh" className="secondary" onClick={()=>{void refresh();if(view==='tsa')setTsaRefresh(value=>value+1);if(view==='audit')void api<AuditRow[]>('/audit').then(setAudit).catch(report);}}>Refresh</button></div>
+      <div className="page-heading"><div><h1>{view==='stats'?'Cheat statistics':view==='tsa'?'TSA configuration':view==='players'?'Player directory':view==='audit'?'Audit log':view==='access'?'Discord rank access':view==='tickets'?'Tickets':view==='todo'?'Developer to-do':view==='suggestions'?'Suggestions':'Panel'}</h1><p className="muted">{view==='players'?'Online and known offline players':'Staff administration'}</p></div><button id="refresh" className="secondary" onClick={()=>{void refresh();if(view==='tsa'||view==='stats')setTsaRefresh(value=>value+1);if(view==='audit')void api<AuditRow[]>('/audit').then(setAudit).catch(report);}}>Refresh</button></div>
       {error&&<p id="page-error" className="banner error" role="alert">{error}</p>}
+      {view==='stats'&&canStats&&<CheatStatistics key={session.csrf+tsaRefresh} api={api}/>}
       {view==='tsa'&&canTsa&&<TsaConfiguration key={session.csrf+tsaRefresh} api={api} canEdit={has(session,'tsa.configure')} canEditLists={has(session,'tsa.lists.edit')}/>}
       {view==='tickets'&&canTickets&&<Tickets key={session.csrf} api={api} canReply={has(session,'tickets.reply')}/>}
       {view==='todo'&&canTodo&&<Todos api={api} session={session}/>}
