@@ -101,7 +101,7 @@ with tempfile.TemporaryDirectory(prefix='react-browser-') as profile:
             wait("document.querySelector('.cheat-stats-donut-center strong')?.textContent==='30.00%'")
             check("document.querySelectorAll('.cheat-stats-bar').length===2",'two detection types shown')
             check("document.querySelector('.cheat-stats-bar')?.textContent.includes('66.67%')",'two out of three detections are xray')
-            click('.cheat-stats-checks label:last-child input')
+            click('.cheat-stats-checks label:first-child input')
             wait("document.querySelector('.cheat-stats-donut-center strong')?.textContent==='20.00%'")
             check("document.querySelector('.cheat-stats-bar')?.textContent.includes('66.67%')",'type distribution is independent of prevalence filter')
             print(f'PASS: {checks} cheat statistics browser checks.')
