@@ -125,7 +125,8 @@ final class BridgeClient implements AutoCloseable {
                 boolean update = operation.equals("tsa-setting-update");
                 if (update) user.require("tsa.configure");
                 result = backend.tsaSettings(user, update ? request.getAsJsonObject("body") : null);
-            } else if (operation.equals("players")) result = backend.players();
+            } else if (operation.equals("stats")) result = backend.statistics();
+            else if (operation.equals("players")) result = backend.players();
             else {
                 UUID id = UUID.fromString(request.get("player").getAsString());
                 StaffActor user = actor(request.getAsJsonObject("actor"));
