@@ -86,11 +86,10 @@ export function TsaLists({api,canEdit}:{api:Api;canEdit:boolean}) {
  const hashCard=(hash:string,column:string)=><article className={'card todo-task tsa-hash-card '+(dragging===hash?'dragging':'')} key={hash} data-hash={hash} draggable={canEdit&&!busy}
   onDragStart={event=>{if((event.target as HTMLElement).closest('button,input,select,textarea')){event.preventDefault();return;}event.dataTransfer.setData('text/plain',hash);event.dataTransfer.effectAllowed='move';dragged.current=hash;setDragging(hash);}}
   onDragEnd={()=>{dragged.current=null;setDragging(null);setOver(null);}}>
-  <FileLabel hash={hash} entries={names[hash]} />
-  {column==='BLACKLISTED'&&blacklisted.has(hash)&&keywordSettingsPresent&&<small className="muted tsa-blacklist-reason">{
-   (()=>{const keyword=filenameDetectionKeyword((names[hash]??[]).map(entry=>entry.filename),detectionKeywords,exemptions);
-    return keyword?'Filename contains "'+keyword+'" (current rule)':'Blacklist reason unknown (no current filename keyword match)';})()
-  }</small>}
+  <FileLabel hash={hash} entries={names[hash]} reason={column==='BLACKLISTED'&&blacklisted.has(hash)&&keywordSettingsPresent
+   ? (()=>{const keyword=filenameDetectionKeyword((names[hash]??[]).map(entry=>entry.filename),detectionKeywords,exemptions);
+      return keyword?'Filename contains "'+keyword+'" (current rule)':'Reason unknown (no current keyword match)';})()
+   : undefined}/>
   {column==='BLACKLISTED'&&!blacklisted.has(hash)&&<p className="muted">Enforcement only</p>}
   <div className="board-actions">
    {column==='BLACKLISTED'&&<button className={'secondary small enforcement-toggle '+(enforced.has(hash)?'enabled':'')} role="switch" aria-checked={enforced.has(hash)} aria-label={'Enforcement for '+hash} disabled={!canEdit||busy} onClick={()=>void run([{list:'ENFORCEMENT',action:enforced.has(hash)?'remove':'add',hash}],enforced.has(hash)?'Enforcement disabled for this hash.':'Enforcement enabled for this hash.')}>Enforcement {enforced.has(hash)?'on':'off'}</button>}
@@ -132,9 +131,11 @@ export function TsaLists({api,canEdit}:{api:Api;canEdit:boolean}) {
  </details>
  </section>;
 }
-function FileLabel({hash,entries}:{hash:string;entries?:Entry[]}) {
+function FileLabel({hash,entries,reason}:{hash:string;entries?:Entry[];reason?:string}) {
  const labels=[...new Set(entries?.map(entry=>entry.filename)??[])];
- return <div className="tsa-file-label"><strong>{labels.length?labels.join(', '):entries?'Unknown filename':'Loading filename…'}</strong><small className="tsa-hash">{hash}</small></div>;
+ return <div className="tsa-file-label"><strong>{labels.length?labels.join(', '):entries?'Unknown filename':'Loading filename…'}</strong>
+  <div className="tsa-hash-meta"><small className="tsa-hash">{hash}</small>{reason&&<small className="muted tsa-blacklist-reason">{reason}</small>}</div>
+ </div>;
 }
 function Pages({page,count,change}:{page:number;count:number;change:(value:number)=>void}) {
  if(count<=PAGE)return null;return <div className="board-actions"><button className="secondary small" disabled={!page} onClick={()=>change(page-1)}>Previous</button><span>{page+1} / {Math.ceil(count/PAGE)}</span><button className="secondary small" disabled={(page+1)*PAGE>=count} onClick={()=>change(page+1)}>Next</button></div>;
