@@ -47,6 +47,10 @@ final class MinecraftBackend implements Backend {
         if (update != null) actor.require("tsa.configure");
         return TsaSettings.access(update);
     }
+    public JsonObject statistics() throws Exception {
+        requireWorker();
+        return data.buildStatistics(server);
+    }
     public JsonObject players() throws Exception {
         requireWorker();
         JsonObject result = data.buildPlayerList(server);

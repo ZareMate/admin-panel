@@ -249,6 +249,10 @@ export async function createApp(config:Config, options:{bridge?:Bridge;fetcher?:
     try {const result=await bridge.call('tsa-setting-update',{actor:user,body:{setting,value:body.value}});await audit.write(user.name,'tsa-setting-update',setting,'success',{});return result;}
     catch(error){await audit.write(user.name,'tsa-setting-update',setting,'failed-or-unconfirmed',{});throw error;}
   });
+  app.get('/api/stats',async req=>{
+    requirePermission(req.panelSession!.user,'tab.stats');
+    return bridge.call('stats');
+  });
   app.get('/api/players',async req=>{requirePermission(req.panelSession!.user,'tab.players');return filterPlayers(await bridge.players(),req.panelSession!.user);});
   app.get<{Params:{id:string}}>('/api/players/:id',async req=>{const user=req.panelSession!.user;requirePermission(user,'tab.players');return filterDetail(await bridge.player(uuid(req.params.id),user),user);});
   app.post<{Params:{id:string;action:string}}>('/api/players/:id/:action',async req=>{

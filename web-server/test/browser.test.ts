@@ -155,3 +155,19 @@ test('TSA uses a shared card-height budget and adjustable reference page size',{
   const [code]=await once(browser,'exit');assert.equal(code,0,'TSA measured pagination browser checks');
  }finally{await f.close();}
 });
+
+test('TSA detection stats and type filtering in Chromium',{timeout:90000},async()=>{
+ const f=await fixture();try{
+  const user=f.config.users.get('admin')!;
+  user.permissions=['panel.access','tab.stats'];
+  await connect(f,(request,socket)=>{
+   const result=request.operation==='stats'
+    ?{totalPlayers:10,types:['ESP','Xray'],players:[{types:['Xray']},{types:['Xray']},{types:['ESP']}]}
+    :{players:[],serverPlayers:0,maxPlayers:20,punishAvailable:false};
+   socket.send(JSON.stringify({id:request.id,result}));
+  });
+  const session=f.auth.create({name:'Stats reviewer',rank:'custom',uuid:'00000000-0000-0000-0000-000000000009',permissions:['panel.access','tab.stats']});
+  const browser=spawn('python3',['test/browser.py',f.url,'stats'],{stdio:'inherit',env:{...process.env,PANEL_TEST_SESSION:session}});
+  const [code]=await once(browser,'exit');assert.equal(code,0,'Stats browser regression checks');
+ }finally{await f.close();}
+});
