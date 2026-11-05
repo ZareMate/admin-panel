@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import sharp from 'sharp';
+import { Skins } from '../src/skins.js';
 import { Images } from '../src/images.js';
 
 test('host-side icons preserve exported PNGs, layered textures, static blocks, and missing-asset fallback',async()=>{
@@ -28,10 +29,25 @@ test('production image resolver rejects cycles, custom renderers, traversal and 
   const {validItem}=await import('../src/images.js');
   for(const id of ['test:../private','../test:item','test:/private','test:a//b'])assert(!validItem(id));
   const png=await sharp({create:{width:16,height:16,channels:4,background:'#ff3300'}}).png().toBuffer();
-  let calls=0;const images=new Images(dir,dir,async()=>{calls++;return new Response(new Uint8Array(png));});await images.init();
+  let calls=0;const images=new Images(dir,dir);await images.init();const skins=new Skins(join(dir,'skins'),async()=>{calls++;return new Response(new Uint8Array(png));});await skins.init();
   assert.deepEqual(await images.icons(['test:cycle','test:texture','test:custom','test:escape']),{'test:cycle':'','test:texture':'','test:custom':'','test:escape':''});
-  await assert.rejects(images.skin('invalid','Player'));await assert.rejects(images.skin('body','../bad'));assert.equal(calls,0);
-  assert.deepEqual(await images.skin('head','Player'),png);assert.deepEqual(await images.skin('head','player'),png);assert.equal(calls,1);
-  await assert.rejects(new Images(dir,dir,async()=>new Response('not-a-png')).skin('head','Player'),/Invalid skin/);
+  await assert.rejects(skins.get('invalid','Player'));await assert.rejects(skins.get('body','../bad'));assert.equal(calls,0);
+  assert.deepEqual((await skins.get('head','Player')).bytes,png);assert.deepEqual((await skins.get('head','player')).bytes,png);assert.equal(calls,1);
+  await assert.rejects(new Skins(join(dir,'invalid'),async()=>new Response('not-a-png')).get('head','Player'),/Invalid skin/);
+ }finally{await rm(dir,{recursive:true,force:true});}
+});
+
+test('head proxy falls back on provider failures and deduplicates concurrent skin requests',async()=>{
+ const dir=await mkdtemp(join(tmpdir(),'panel-head-fallback-'));try{
+  const png=await sharp({create:{width:8,height:8,channels:4,background:'#4488cc'}}).png().toBuffer();
+  const urls:string[]=[];
+  const skins=new Skins(join(dir,'skins'),async input=>{
+   const url=String(input);urls.push(url);
+   return url.startsWith('https://minotar.net/')?new Response('bad gateway',{status:502}):new Response(new Uint8Array(png));
+  });
+  const [first,second]=await Promise.all([skins.get('head','Explorer'),skins.get('head','explorer')]);
+  assert.deepEqual(first.bytes,png);assert.deepEqual(second.bytes,png);
+  assert.equal(urls.length,2);assert(urls[0]!.startsWith('https://minotar.net/'));assert(urls[1]!.startsWith('https://mc-heads.net/'));
+  assert.deepEqual((await skins.get('head','Explorer')).bytes,png);assert.equal(urls.length,2);
  }finally{await rm(dir,{recursive:true,force:true});}
 });

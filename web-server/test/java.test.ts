@@ -13,12 +13,18 @@ test('production Java BridgeClient connects to Fastify and executes commands wit
  try {
   const end=Date.now()+10000;while(!f.bridge.connected&&Date.now()<end&&child.exitCode===null)await new Promise(r=>setTimeout(r,25));assert(f.bridge.connected,stderr);
   assert.equal((await f.bridge.players() as any).javaBridge,true);
+  const map=await f.bridge.call('map-players') as any;assert.equal(map.players[0].name,'Explorer');assert.equal(map.players[0].z,-48);assert.equal(map.spawn.x,320);assert.equal(map.spawn.z,-160);
+  const claims=await f.bridge.call('map-claims',{dimension:'minecraft:overworld'}) as any;assert.equal(claims.teams[0].name,'Builders');assert.equal(claims.teams[0].chunks[0].x,-1);
   const snapshots:any[]=[],profiles:any[]=[];
   const waitFor=async(check:()=>boolean)=>{const end=Date.now()+4000;while(!check()&&Date.now()<end)await new Promise(r=>setTimeout(r,20));assert(check(),'live Java snapshot arrived');};
   const unlist=f.bridge.watch('players',{target:'players'},data=>{if(data)snapshots.push(data);});
   await waitFor(()=>snapshots.length>0);
   await new Promise(r=>setTimeout(r,1200));assert.equal(snapshots.length,1,'capture timestamps do not resend unchanged state');
   const user={name:'Node staff',rank:'owner',permissions:[...PERMISSIONS],uuid:discordUuid('12345678901234572')};
+  const deaths=await f.bridge.call('kill-feed',{actor:user,offset:0,limit:25}) as any;assert.equal(deaths.entries[0].weapon.name,'Custom Blade');assert(!deaths.entries[0].inventory);
+  const death=await f.bridge.call('kill-feed',{actor:user,entry:playerId}) as any;assert(death.inventory);
+  const hidden=await f.bridge.call('kill-feed',{actor:{...user,permissions:['panel.access','tab.killFeed']},entry:playerId}) as any;assert(!hidden.inventory);
+  await assert.rejects(f.bridge.call('kill-feed',{actor:{...user,permissions:['panel.access']}}),/Permission required/);
   const unprofile=f.bridge.watch('java-profile',{target:'player',player:playerId,actor:user},data=>{if(data)profiles.push(data);});
   await waitFor(()=>profiles.length>0);assert.equal(profiles[0].notes[0].viewer,user.uuid);
   const detail=await f.bridge.player(playerId,user) as any;assert.equal(detail.notes[0].viewer,user.uuid);assert.equal(detail.notes[0].rank,'owner');

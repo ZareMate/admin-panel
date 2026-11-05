@@ -22,11 +22,11 @@ npm start
 
 You can instead copy your existing `config/admin-panel.properties` to `data/config/admin-panel.properties` and `logs/admin-panel-audit.jsonl` to `data/logs/admin-panel-audit.jsonl`. Existing local password hashes, Discord rank order, and Minecraft UUID mappings remain compatible. Discord-derived author UUIDs are unchanged, preserving note ownership. Sessions require a fresh login. Discord roles are checked at login and retained in the session; normal page refreshes do not query Discord.
 
-For deployment without source, unpack `build/distributions/admin_panel-2.1.0-web.zip`, run `npm ci --omit=dev`, then `npm run setup` and `npm start`. React is already built in that archive. Keep `data/` on persistent storage. Run **one Node instance per Minecraft server**; bridge connections and browser sessions are process-local.
+For deployment without source, unpack `build/distributions/admin_panel-2.2.0-web.zip`, run `npm ci --omit=dev`, then `npm run setup` and `npm start`. React is already built in that archive. Keep `data/` on persistent storage. Run **one Node instance per Minecraft server**; bridge connections and browser sessions are process-local.
 
 ## Connect Minecraft
 
-Install `admin_panel-2.1.0.jar` in Minecraft. Install Admin Notes 2.0.0 or newer to enable player notes. Configure `config/admin-panel-bridge.properties`:
+Install `admin_panel-2.2.0.jar` in Minecraft. Install Admin Notes 2.0.0 or newer to enable player notes. Configure `config/admin-panel-bridge.properties`:
 
 ```properties
 enabled=true
@@ -257,3 +257,57 @@ ID and auth guild, and rank-denial logs show configured versus member role IDs.
 Tickets, session/CSRF cookies, bot/bridge secrets and raw upstream error bodies
 are never logged. Deploy and restart the rebuilt bot and web service together
 to receive the specific error messages rather than the old generic 502.
+
+
+## Player map and FTB Chunks terrain
+
+The **Player map** tab displays online player positions, refreshed every five seconds. Choose a dimension, drag or use arrow keys to pan, scroll or use the zoom buttons, and click a player to follow them across dimensions. The map opens at the server’s world spawn. **Center map** stops following, returns to the Overworld, and centers that same world spawn. Regular position refreshes preserve your chosen view.
+
+Grant `tab.map` to view player positions and terrain. Grant `map.upload` in addition to upload FTB Chunks regions, and `map.remove` to remove them. These grants are independent of player profile access and rank names. Legacy admin accounts receive all three; existing explicit permission lists need the grants added in Rank access or the properties file. Sign in again after changing grants.
+
+Expand **FTB Chunks terrain**, select the matching dimension, and upload one or more client cache region ZIPs named `XXXXX-XXXXX.zip` (for example `0EA60-0EA60.zip` is region 0,0). Upload individual region archives or a full cache export ZIP containing `dimensions.txt`, optional `block_map.txt` / `biome_map.txt`, and dimension folders such as `minecraft_overworld/`. Only the selected dimension is imported. Each region covers 512 by 512 blocks. Archives must include `chunks.dat`, `data.png`, `blocks.png`, `grass.png`, `foliage.png`, and `water.png`. The terrain codec, palette and shading come from the local stasis-control project's FTB Chunks map. Cache exports use their `block_map.txt` index mapping, which is persisted per imported region for later individual updates. Individual regions without an exported mapping use the Stasis palette; unknown block indices render transparently.
+
+Imports merge chunks using their recorded timestamps: newer chunks replace older chunks, while chunks absent from an upload are preserved. Equal timestamps keep existing data. Each uploaded ZIP is limited to 20 MiB, cache exports are limited to 2,048 entries and 64 MiB expanded data, nested region entries remain strictly bounded, and `chunks.dat` versions 0–3 are supported. Images must be 512 by 512, and each dimension supports up to 512 imported regions. Decoding, merging and rendering run in a bounded worker, one import at a time. Original caches and rendered tiles persist under `DATA_DIR/map/`; keep that directory when redeploying. Viewing requires no upload permission, and importing/removing terrain is recorded in the audit log.
+
+Deploy the updated Minecraft mod and web archive together for live positions. Terrain is stored by the web service and remains visible while Minecraft is disconnected; player markers clear when position requests fail. The Java bridge captures positions on the Minecraft server thread and performs no terrain processing there.
+
+The map's **Show offline players** toggle is off by default. Enable it to include players with readable last-saved positions, shown with gray markers, an Offline label, and the save timestamp. Offline NBT files are read and cached on the bridge worker; online positions take precedence, and missing or invalid saves are omitted. Turning the toggle off stops requesting offline data.
+
+**Show claims** overlays live FTB Chunks claims for the selected dimension, using FTB Teams names and colors. Hover a chunk to see its owner; expand **Claim teams** to find and center a team's claims. Dashed borders indicate force-loading is enabled, not necessarily currently active. Claim data refreshes every 30 seconds and requires only `tab.map`; terrain uploads are not needed. The integration is optional and shows an availability message when FTB Chunks/Teams are absent or incompatible. Live claim data is captured on the server thread through the [FTB Chunks public API](https://github.com/FTBTeam/FTB-Chunks/blob/1.21.1/main/common/src/main/java/dev/ftb/mods/ftbchunks/api/ClaimedChunkManager.java), then grouped and serialized on the bridge worker. Snapshots are capped at 100,000 chunks per dimension with an explicit truncation notice.
+
+The dimension selector lists loaded server dimensions, including worlds with no players. Labels omit namespaces and use readable words (`minecraft:the_nether` → `The Nether`); requests and terrain storage retain the full dimension ID.
+
+Player markers use skin heads with green online outlines and gray dashed offline outlines. A gold outer border identifies the followed player. A pixel-face fallback appears when a skin is unavailable; head requests use the existing server skin proxy and are limited to two concurrent requests per map.
+
+Head images use a server-side provider fallback and deduplicate simultaneous requests for the same player. The map keeps its download queue while panning or following players and retries failed loads with bounded exponential backoff, so transient skin-service failures recover without reloading the map.
+
+All player avatars, map heads and full-body views share the `Skins` service and skin URL utility. Successful head/body images are cached for approximately two hours in memory and on disk under `DATA_DIR/cache/skins/`, so restarts reuse valid cached files. The cache is case-insensitive per image type, capped at 512 files, and written atomically. Expired or invalid cached files are fetched again; reads do not extend their lifetime. Keep this directory on persistent storage when redeploying. HTTP cache headers and the map's bitmap cache use the same two-hour limit.
+
+
+## Kill feed
+
+The **Kill feed** tab records new player deaths after installing the updated mod and enabling the bridge. It shows killer/victim identities, Minecraft death message and damage type, direct projectile/entity where applicable, weapon item ID and custom name, enchantments and durability, time and location. Environmental deaths are included. If Minecraft attributes a later environmental death to recent combat, the feed marks that attribution and does not invent a weapon when the damage source provides none.
+
+Expand a death to inspect the victim's inventory, armor, offhand and Curios as captured before drops, plus experience and the keepInventory setting. These are historical snapshots, not the player's current inventory. Ender Chest contents are not carried items and are not included. Grant `tab.killFeed` to view the feed and weapon details; add `killFeed.inventory` for the victim's carried-item snapshot. Existing explicit ranks need the new grants added and a new login. Neither grant requires player profile access.
+
+Events cancelled before the death event finishes are discarded. Live item/entity state is captured on the Minecraft server thread; JSON serialization, retention, disk writes and reads run on a separate bounded worker. History survives restarts in the world's `admin-panel-kill-feed/` directory, retaining at most 2,000 deaths and 64 MiB. Individual snapshots are limited to 8 MiB; queue/storage failures are reported in the Minecraft log. Feed pages are searchable and update every five seconds. Updating the Minecraft mod and web service together is required. Live death-hook/mod compatibility still needs a dedicated-server check.
+
+
+### Bot-backed to-do assignments and personal counters
+
+Task assignees are selected from the connected Discord bot's staff directory, showing nickname and rank. A member is eligible when their highest configured panel rank has `panel.access` and `tab.todo`. The directory uses the bot auth guild, which must match the panel's `discord.guild-id`. Assignments save stable Discord IDs; legacy text assignments are preserved until reassigned through the dropdown. New arbitrary text assignments are rejected.
+
+The To-do navigation badge shows the signed-in Discord user's assigned **To do + In progress** total. The board shows the two counts separately. Completed, unassigned and other users' tasks do not count. Counts update after your edits and refresh every 30 seconds for changes made by other staff. Local accounts without a linked Discord identity show zero personal assignments. This does not revalidate session ranks or change login-time authorization snapshots.
+
+Deploy the updated web service and Discord bot, then sign in again. The bot application needs Server Members Intent enabled in the Discord developer portal for member listing. Keep `DATA_DIR/todos.json` when updating.
+
+Bridge actors receive permissions scoped to the requested feature. New kill-feed permissions are sent only for kill-feed operations, TSA grants only for TSA operations, and player grants for profile/moderation operations. This prevents an older installed mod from rejecting unrelated TSA/player requests over newer permission names. The kill feed itself still requires the updated Minecraft mod.
+
+
+### Item NBT inspection
+
+Expand a non-empty item in the normal inventory, Ender Chest, Curios or kill-feed snapshot, then expand **NBT data** to inspect its saved item components. Compounds, lists and typed arrays expand independently; numeric values remain strings so 64-bit values retain their exact precision. Item encoding uses the Minecraft registry on the server thread, while typed-tree conversion and serialization run on workers. Views are bounded to 50,000 NBT nodes per snapshot and depth 64, with explicit truncation notices. Existing storage and kill-feed inventory permissions apply.
+
+Normal online inventories show the current snapshot and offline inventories use the saved item data. Kill-feed NBT is frozen at death. Older death records have no NBT and show a clear unavailable message; they are not filled from a player's current inventory. Deploy the updated mod and web archive together.
+
+Player directory filters combine name/UUID search, online status, staff rank and detection status. Detection status uses the same `hasDetections` flag as red player names and requires `tab.security`. Staff ranks match linked Minecraft accounts by Discord ID to their highest configured panel rank with `panel.access`, independently of to-do access. The bot directory refreshes every two minutes and requires the bot's member-list access. Update the bridge mod to supply linked IDs; older bridge versions leave ranks unknown. The staff directory endpoint requires `tab.players` and returns ranks without exposing linked Discord IDs. If the bot is unavailable, all-player browsing remains usable and the rank filter reports the failure.

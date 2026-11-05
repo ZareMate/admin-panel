@@ -11,6 +11,19 @@ public final class NodeBridgeFixture {
         String large = System.getenv("TEST_LARGE_BRIDGE") == null ? null : "😀漢字" + "x".repeat(9*1024*1024);
         Backend backend = new Backend() {
             private int mutations;
+            public JsonObject killFeed(String query,int offset,int limit,UUID id,boolean inventory) {
+                JsonObject row=KillFeedStoreTest.record(UUID.fromString("00000000-0000-0000-0000-000000000001"),1,"Killer","Victim");
+                if(id!=null){if(!inventory)row.remove("inventory");return row;}
+                row.remove("inventory");JsonArray entries=new JsonArray();entries.add(row);
+                JsonObject result=new JsonObject();result.add("entries",entries);result.addProperty("total",1);return result;
+            }
+            public JsonObject mapClaims(String dimension) {
+                return FtbMapClaims.json(new FtbMapClaims.Snapshot(true,"",java.util.List.of(
+                    new FtbMapClaims.Claim(-1,2,"team-a","Builders",0x123456,true)),false));
+            }
+            public JsonObject mapPlayers(boolean includeOffline) {
+                return JsonParser.parseString("{\"players\":[{\"uuid\":\"00000000-0000-0000-0000-000000000001\",\"name\":\"Explorer\",\"dimension\":\"minecraft:overworld\",\"x\":32,\"y\":64,\"z\":-48}],\"spawn\":{\"dimension\":\"minecraft:overworld\",\"x\":320,\"y\":64,\"z\":-160},\"updatedAt\":1}").getAsJsonObject();
+            }
             public JsonObject players() {
                 JsonObject result = new JsonObject(); result.add("players", new JsonArray());
                 result.addProperty("updatedAt", System.currentTimeMillis());

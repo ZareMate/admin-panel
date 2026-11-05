@@ -16,7 +16,8 @@
       "node"
     ],
     "noUnusedLocals": true,
-    "noUnusedParameters": true
+    "noUnusedParameters": true,
+    "allowJs": true
   },
   "include": [
     "src"

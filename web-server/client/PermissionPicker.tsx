@@ -13,7 +13,11 @@ export function PermissionPicker({selected,onToggle}:{selected:readonly string[]
         if(!keys.length)return null;
         const count=group.keys.filter(key=>selected.includes(key)).length;
         return <details className="permission-group" data-group={group.id} key={group.id} open={needle?true:undefined}>
-          <summary><span>{group.title}</span><span className="pill">{count} / {group.keys.length}</span></summary>
+          <summary><label className="permission-category-toggle" onClick={event=>event.stopPropagation()} onKeyDown={event=>event.stopPropagation()} title="Toggle the entire category, including permissions hidden by search">
+            <input type="checkbox" data-permission-group={group.id} aria-label={'All '+group.title+' permissions'} checked={count===group.keys.length}
+              ref={input=>{if(input)input.indeterminate=count>0&&count<group.keys.length;}}
+              onChange={event=>{const checked=event.target.checked;for(const key of group.keys)if(selected.includes(key)!==checked)onToggle(key,checked);}}/>
+          </label><span className="permission-category-name">{group.title}</span><span className="pill">{count} / {group.keys.length}</span></summary>
           <div className="permission-group-body"><p>{group.hint}</p><div className="permission-options">{keys.map(key=><label className="checkbox permission-option" key={key} title={key}>
             <input data-permission={key} type="checkbox" checked={selected.includes(key)} onChange={event=>onToggle(key,event.target.checked)}/>
             <span><strong>{PERMISSION_LABELS[key]}</strong><small>{key}</small></span>

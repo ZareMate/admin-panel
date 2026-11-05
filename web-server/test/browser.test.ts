@@ -18,7 +18,8 @@ test('React production build in Chromium', {timeout:90000},async()=>{
   let suggestionTags=['12345678901234575'];
   const suggestion=()=>({id:'12345678901234574',guildId:'12345678901234568',name:'Build a spawn station',tagIds:suggestionTags,archived:false,locked:false});
   ticketBot.on('message',async data=>{const c=JSON.parse(data.toString());if(c.action==='suggestions-list')await new Promise(resolve=>setTimeout(resolve,300));const item=(message:unknown)=>ticketBot.send(JSON.stringify({type:'item',id:c.id,message}));
-    if(c.action==='suggestions-list'){item({name:'Server ideas',forumId:'12345678901234573',guildId:'12345678901234568',tags:[{id:'12345678901234575',name:'Planned',moderated:false},{id:'12345678901234576',name:'In review',moderated:false}]});if((!c.untagged||suggestionTags.length===0)&&(c.tags??[]).every((id:string)=>suggestionTags.includes(id)))item(suggestion());}
+    if(c.action==='todo-assignees'){item({assignees:[{id:'12345678901234579',name:'Developer',rank:'dev'}]});}
+    else if(c.action==='suggestions-list'){item({name:'Server ideas',forumId:'12345678901234573',guildId:'12345678901234568',tags:[{id:'12345678901234575',name:'Planned',moderated:false},{id:'12345678901234576',name:'In review',moderated:false}]});if((!c.untagged||suggestionTags.length===0)&&(c.tags??[]).every((id:string)=>suggestionTags.includes(id)))item(suggestion());}
     else if(c.action==='suggestions-tags'){suggestionTags=c.tags;item(suggestion());}
     else item({id:(c.action==='reply'||c.action==='suggestions-reply')?'12345678901234570':'12345678901234569',author:(c.action==='reply'||c.action==='suggestions-reply')?'Support bot':'LostPilot',bot:(c.action==='reply'||c.action==='suggestions-reply'),content:(c.action==='reply'||c.action==='suggestions-reply')?c.content:c.action==='suggestions-history'?'A station would help new players.':'I lost my airship <script>alert(1)</script>',createdAt:(c.action==='reply'||c.action==='suggestions-reply')?Date.now():1,attachments:[],embeds:[]});
     ticketBot.send(JSON.stringify({type:'done',id:c.id,hasMore:false}));
@@ -162,12 +163,73 @@ test('TSA detection stats and type filtering in Chromium',{timeout:90000},async(
   user.permissions=['panel.access','tab.stats'];
   await connect(f,(request,socket)=>{
    const result=request.operation==='stats'
-    ?{totalPlayers:10,types:['ESP','Xray'],players:[{types:['Xray']},{types:['Xray']},{types:['ESP']}]}
+    ?{totalPlayers:10,fileBreakdown:{ray:[{hash:'a'.repeat(64),names:['xray-client.jar','<img src=x onerror=window.statsXss=true>'],players:2}]},packetErrors:{timeouts:3,modified:2,other:1},types:['ray','esp','Other detected files'],players:[{types:['ray']},{types:['ray']},{types:['esp']}]}
     :{players:[],serverPlayers:0,maxPlayers:20,punishAvailable:false};
    socket.send(JSON.stringify({id:request.id,result}));
   });
   const session=f.auth.create({name:'Stats reviewer',rank:'custom',uuid:'00000000-0000-0000-0000-000000000009',permissions:['panel.access','tab.stats']});
   const browser=spawn('python3',['test/browser.py',f.url,'stats'],{stdio:'inherit',env:{...process.env,PANEL_TEST_SESSION:session}});
   const [code]=await once(browser,'exit');assert.equal(code,0,'Stats browser regression checks');
+ }finally{await f.close();}
+});
+
+
+test('player map pans, follows dimensions and imports/removes FTB Chunks terrain in Chromium',{timeout:90000},async()=>{
+ const {writeFile}=await import('node:fs/promises');
+ const {join}=await import('node:path');
+ const {cacheZip}=await import('./map-fixtures.js');
+ const headPng=await sharp({create:{width:8,height:8,channels:4,background:'#4488cc'}}).png().toBuffer();
+ const f=await fixture({fetcher:async()=>new Response(new Uint8Array(headPng),{headers:{'content-type':'image/png'}})});try{
+  const path=join(f.dir,'server-cache.zip');await writeFile(path,cacheZip());
+  let mapCalls=0;
+  await connect(f,(request,socket)=>{
+   if(request.operation==='map-players')mapCalls++;
+   socket.send(JSON.stringify({id:request.id,result:request.operation==='map-claims'?{available:true,teams:request.dimension==='minecraft:the_nether'?[]:[{id:'team-a',name:'Builders',color:'#ff0000',chunks:[{x:7,z:3,forceLoaded:true}]}]}:request.operation==='map-players'?{spawn:{dimension:'minecraft:overworld',x:320,y:64,z:-160},dimensions:['minecraft:overworld','minecraft:the_nether','minecraft:the_end','example:azure_forest'],players:[
+    {uuid:'00000000-0000-0000-0000-000000000001',name:'Explorer',dimension:'minecraft:overworld',x:mapCalls>1?96:32,y:64,z:48},
+    {uuid:'00000000-0000-0000-0000-000000000002',name:'NetherPilot',dimension:'minecraft:the_nether',x:-64,y:90,z:-32}
+   ,...(request.includeOffline?[{uuid:'00000000-0000-0000-0000-000000000003',name:'OfflineExplorer',online:false,savedAt:1,dimension:'minecraft:overworld',x:128,y:64,z:128},...Array.from({length:24},(_,index)=>({uuid:'offline-'+index,name:'OfflinePlayerWithLongName'+index,online:false,savedAt:Date.now(),dimension:'minecraft:overworld',x:-11000-index,y:72,z:-21000-index}))]:[])],updatedAt:Date.now()}:{}}));
+  });
+  const session=f.auth.create({name:'Cartographer',rank:'custom',uuid:'00000000-0000-0000-0000-000000000009',permissions:['panel.access','tab.map','map.upload','map.remove']});
+  const browser=spawn('python3',['test/browser.py',f.url,'map'],{stdio:'inherit',env:{...process.env,PANEL_TEST_SESSION:session,PANEL_MAP_ZIP:path}});
+  const [code]=await once(browser,'exit');assert.equal(code,0,'Player map browser checks');
+  const readSession=f.auth.create({name:'Map viewer',rank:'custom',uuid:'00000000-0000-0000-0000-000000000010',permissions:['panel.access','tab.map']});
+  const viewer=spawn('python3',['test/browser.py',f.url,'map-readonly'],{stdio:'inherit',env:{...process.env,PANEL_TEST_SESSION:readSession}});
+  const [readCode]=await once(viewer,'exit');assert.equal(readCode,0,'Read-only map browser checks');
+ }finally{await f.close();}
+});
+
+
+test('kill feed shows named weapons, immutable death inventory, safe text and independent read-only access in Chromium',{timeout:90000},async()=>{
+ const {deathFixture}=await import('./kill-feed-fixtures.js');
+ const png=await sharp({create:{width:8,height:8,channels:4,background:'#4488cc'}}).png().toBuffer();
+ const f=await fixture({fetcher:async()=>new Response(new Uint8Array(png))});try{
+  const row=deathFixture(),second={...deathFixture(),killer:null,message:'Victim fell from a high place',cause:'minecraft:fall',weapon:{empty:true}};
+  await connect(f,(request,socket)=>{
+   if(request.operation!=='kill-feed'){socket.send(JSON.stringify({id:request.id,result:{}}));return;}
+   const detail=request.actor.permissions.includes('killFeed.inventory')?row:{...row,inventory:undefined};
+   const rows=[row,second].filter(entry=>!request.query||JSON.stringify(entry).toLowerCase().includes(request.query.toLowerCase()));
+   socket.send(JSON.stringify({id:request.id,result:request.entry?detail:{entries:rows,total:rows.length,offset:0,limit:25}}));
+  });
+  for(const inventory of [true,false]){
+   const session=f.auth.create({name:'Death reviewer',rank:'custom',uuid:'00000000-0000-0000-0000-000000000009',permissions:['panel.access','tab.killFeed',...(inventory?['killFeed.inventory']:[])]});
+   const browser=spawn('python3',['test/browser.py',f.url,'kill-feed'],{stdio:'inherit',env:{...process.env,PANEL_TEST_SESSION:session,PANEL_KILL_INVENTORY:inventory?'1':'0'}});
+   const [code]=await once(browser,'exit');assert.equal(code,0,'Kill feed browser checks');
+  }
+ }finally{await f.close();}
+});
+
+
+test('bot-backed task picker and personal active-task counts update in the board and sidebar',{timeout:90000},async()=>{
+ const f=await fixture();try{
+  f.config.ticketSyncToken='a'.repeat(43);
+  const bot=new WebSocket(f.url.replace('http','ws')+'/tickets-commands',{headers:{Authorization:'Bearer '+f.config.ticketSyncToken}});await once(bot,'open');
+  bot.on('message',data=>{const c=JSON.parse(data.toString());bot.send(JSON.stringify({type:'item',id:c.id,message:{assignees:[{id:'12345678901234579',name:'Developer nickname',rank:'dev'}]}}));bot.send(JSON.stringify({type:'done',id:c.id}));});
+  const session=f.auth.create({name:'Dev account',discordId:'12345678901234579',rank:'custom',uuid:'00000000-0000-0000-0000-000000000009',permissions:['panel.access','tab.todo','todo.create','todo.edit']});
+  const csrf=f.auth.get(session)!.csrf;
+  for(const status of ['todo','doing','done']){
+   const result=await f.app.inject({method:'POST',url:'/api/todos',headers:{host:new URL(f.url).host,origin:f.url,cookie:'panel_session='+session,'x-csrf-token':csrf,'content-type':'application/json'},payload:{title:status+' task',description:'Assigned task',status,priority:'normal',assignee:'',assigneeId:'12345678901234579'}});assert.equal(result.statusCode,200);
+  }
+  const browser=spawn('python3',['test/browser.py',f.url,'todo-mine'],{stdio:'inherit',env:{...process.env,PANEL_TEST_SESSION:session}});
+  const [code]=await once(browser,'exit');assert.equal(code,0,'Assigned task count browser checks');
  }finally{await f.close();}
 });

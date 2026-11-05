@@ -8,8 +8,8 @@ The hosting app is **Fastify + TypeScript**, with a **React + TypeScript** front
 
 `gradle build` produces:
 
-- `build/libs/admin_panel-2.1.0.jar` for Minecraft.
-- `build/distributions/admin_panel-2.1.0-web.zip` for Node hosting. Unpack it and run `npm ci --omit=dev`, `npm run setup`, then `npm start` after configuring it.
+- `build/libs/admin_panel-2.2.0.jar` for Minecraft.
+- `build/distributions/admin_panel-2.2.0-web.zip` for Node hosting. Unpack it and run `npm ci --omit=dev`, `npm run setup`, then `npm start` after configuring it.
 
 For source development: `cd web-server`, `npm ci`, `npm run build`, `npm run setup`, then `npm start`. Node.js 22.12+ is required. Configuration and persistent audit data live on the web host. Existing properties files, account hashes, Discord UUID mappings, and audit history can be copied across.
 
@@ -68,11 +68,11 @@ To build from another checkout:
 gradle build -PadminNotesJar=/absolute/path/admin_notes-2.0.0.jar -PpunishJar=/absolute/path/punish-1.0.0.jar
 ```
 
-Both jars are required at compile time and are **not bundled**. Output: `build/libs/admin_panel-2.1.0.jar`. The default build targets Admin Notes 2.0.0 and the Punish API including `PunishService.removeOffense`.
+Both jars are required at compile time and are **not bundled**. Output: `build/libs/admin_panel-2.2.0.jar`. The default build targets Admin Notes 2.0.0 and the Punish API including `PunishService.removeOffense`.
 
 ## Install and configure Discord login
 
-1. Replace the old panel jar in the dedicated server’s `mods/` folder with `admin_panel-2.1.0.jar`. Install Admin Notes 2.0.0 or newer for player notes and the desired integration mods; remove older panel jars.
+1. Replace the old panel jar in the dedicated server’s `mods/` folder with `admin_panel-2.2.0.jar`. Install Admin Notes 2.0.0 or newer for player notes and the desired integration mods; remove older panel jars.
 2. Create/select an application in the [Discord Developer Portal](https://discord.com/developers/applications). Copy its OAuth2 **client ID** and **client secret** into the server configuration. A bot token is not needed.
 3. Register the **exact** OAuth2 redirect URI `<origin>/api/auth/discord/callback`. For the current LAN origin this is `http://10.0.0.1:8080/api/auth/discord/callback`. If Discord does not accept your chosen HTTP redirect, use the HTTPS proxy setup in the Node deployment guide and register that HTTPS origin instead.
 4. Merge the settings below into `config/admin-panel.properties`, set `enabled=true` on the web host and restart the Node service. The browser shows **Continue with Discord**.
@@ -202,3 +202,8 @@ The TSA tab opens with editable lists: allowed hashes, blacklisted hashes, enfor
 TSA lists use a three-column board: Blacklist, Allow list, and Unlisted. Drag hashes between all three columns or use the card buttons. Cards show all recorded filenames above muted hashes. Unlisted cards come from TSA’s cached inventory API, grouped by hash; filename lookup only supplies labels for classified hashes. Dragging to Unlisted removes allowed, blacklisted, and enforcement memberships. Moving to Allow list also disables per-hash enforcement. Moving from Allow list to Blacklist clears enforcement before removing the allowance, leaving punishment disabled until explicitly enabled. Moving to Unlisted clears enforcement and blacklist before removing the allowance. Allow list takes precedence when categorizing overlapping hashes: an allowed hash appears only in Allow list even if its blacklist or enforcement memberships remain. Enforcement-only hashes without an allowance remain visible in Blacklist. Blacklist cards sort enforced hashes first, then alphabetically by hash within each group. The enforcement switch edits that hash’s enforcement membership; global enforcement mode still determines punishment. Allowed filename editing remains below the board.
 
 Cached inventory entries are reclassified against current lists, so removing an allowance can return a previously scanned file to Unlisted after reload. The config filename allowlist is respected. A manually returned hash with no cached inventory remains visible during the panel session; after reload only cached inventory files appear as Unlisted. Per-player inventories are not persistent across server restarts. Use `/tsa unlisted` in-game for fresh scans, then Reload lists.
+
+
+### Player map
+
+The standalone web panel includes a dimension-aware **Player map** with online positions, pan/zoom and player following. Administrators can upload FTB Chunks cache region ZIPs using the stasis-control map format; newer chunk data merges into persisted terrain. Permissions are `tab.map`, `map.upload` and `map.remove`. See [the player map deployment and upload instructions](web-server/README.md#player-map-and-ftb-chunks-terrain). Deploy both the updated mod JAR and web ZIP.

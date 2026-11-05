@@ -20,7 +20,7 @@ test('to-do API enforces independent grants, CSRF and validated task fields',asy
   const post=(path:string,payload:unknown)=>f.app.inject({method:'POST',url:path,headers:headers(f,staff),payload:JSON.stringify(payload)});
   assert.equal((await post('/api/todos',draft)).statusCode,403);
   account.permissions.push('todo.create');staff=await login(f);
-  const created=await post('/api/todos',draft);assert.equal(created.statusCode,200);const id=created.json().id;
+  const created=await post('/api/todos',{...draft,assignee:''});assert.equal(created.statusCode,200);const id=created.json().id;
   assert.equal((await post('/api/todos/'+id+'/edit',{...draft,version:1})).statusCode,403);
   assert.equal((await post('/api/todos/'+id+'/delete',{version:1})).statusCode,403);
   assert.equal((await post('/api/todos',{...draft,title:' '})).statusCode,400);

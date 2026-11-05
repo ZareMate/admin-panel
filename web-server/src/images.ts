@@ -2,8 +2,6 @@ import { readFile, readdir, stat } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
 import sharp from 'sharp';
 import { unzipSync } from 'fflate';
-import { Failure } from './common.js';
-import { boundedBody } from './auth.js';
 import { blockGui, cube, modelPreview } from './model.js';
 export const validItem=(id:unknown):id is string=>typeof id==='string'&&id.length<=200&&/^[a-z0-9_.-]+:[a-z0-9_./-]+$/.test(id)&&id.split(/[:/]/).every(s=>s!=='.'&&s!=='..'&&s!=='');
 const png=(data:Buffer)=>{
@@ -12,11 +10,9 @@ const png=(data:Buffer)=>{
 };
 export class Images {
   private cache=new Map<string,string>();
-  private skins=new Map<string,{bytes:Buffer;expires:number}>();
   private assetCache=new Map<string,Buffer|null>();
   private jars:string[]=[];
-  private skinJobs=0;
-  constructor(private assets:string,private bundled:string,private fetcher:typeof fetch=fetch) {}
+  constructor(private assets:string,private bundled:string) {}
   async init() {this.jars=(await readdir(this.assets).catch(()=>[])).filter(f=>f.endsWith('.jar')).sort().reverse().map(f=>resolve(this.assets,f));}
   private async asset(path:string):Promise<Buffer|null> {
     if(this.assetCache.has(path)) return this.assetCache.get(path)!;
@@ -72,14 +68,4 @@ export class Images {
     if(this.cache.size>=256)this.cache.delete(this.cache.keys().next().value!);this.cache.set(id,value);return value;
   }
   async icons(ids:string[]){const out:Record<string,string>={};for(const id of ids)out[id]=await this.icon(id);return out;}
-  async skin(kind:string,name:string) {
-    if(!['head','body'].includes(kind)||!/^[A-Za-z0-9_]{3,16}$/.test(name))throw new Failure(404,'Not found');
-    const key=kind+':'+name.toLowerCase(),cached=this.skins.get(key);if(cached&&cached.expires>Date.now())return cached.bytes;
-    if(this.skinJobs>=2)throw new Failure(503,'Skin service busy');this.skinJobs++;
-    try {
-      const response=await this.fetcher(kind==='head'?`https://mineskin.eu/helm/${name}/100.png`:`https://mineskin.eu/armor/body/${name}/256.png`,{redirect:'error',signal:AbortSignal.timeout(8000)});
-      if(!response.ok)throw new Failure(502,'Skin provider unavailable');const bytes=await boundedBody(response,1024*1024);if(!png(bytes))throw new Failure(502,'Invalid skin image');
-      if(this.skins.size>=512)this.skins.delete(this.skins.keys().next().value!);this.skins.set(key,{bytes,expires:Date.now()+6*3600_000});return bytes;
-    }finally{this.skinJobs--;}
-  }
 }

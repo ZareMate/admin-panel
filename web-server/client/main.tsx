@@ -1,3 +1,5 @@
+import {CacheProvider} from '@emotion/react';
+import createCache from '@emotion/cache';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import './style.css';
@@ -11,6 +13,8 @@ async function start() {
    if(!response.ok){const body=await response.json();throw new Error(body.error||'Minecraft sign-in failed');}
   }catch(error){const url=new URL(location.href);url.searchParams.set('loginError',error instanceof Error?error.message:'Minecraft sign-in failed');history.replaceState(null,'',url.pathname+url.search);}
  }
- createRoot(document.getElementById('root')!).render(<App/>);
+ const nonce=document.querySelector<HTMLMetaElement>('meta[name=style-nonce]')?.content;
+ const cache=createCache({key:'panel',nonce});
+ createRoot(document.getElementById('root')!).render(<CacheProvider value={cache}><App/></CacheProvider>);
 }
 void start();

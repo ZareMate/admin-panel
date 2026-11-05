@@ -13,7 +13,7 @@ test('statistics API requires its own grant and only returns anonymized aggregat
   const requests:string[]=[];
   await connect(f,(request,socket)=>{
    requests.push(request.operation);
-   socket.send(JSON.stringify({id:request.id,result:{totalPlayers:10,types:['Xray','ESP'],players:[{types:['Xray']},{types:['Xray']},{types:['ESP']}]}}));
+   socket.send(JSON.stringify({id:request.id,result:{totalPlayers:10,types:['ray','esp'],players:[{types:['ray']},{types:['ray']},{types:['esp']}]}}));
   });
   const response=await f.app.inject({url:'/api/stats',headers:headers(f,granted)});
   assert.equal(response.statusCode,200);

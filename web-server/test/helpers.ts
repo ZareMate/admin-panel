@@ -1,3 +1,4 @@
+import {nbtFixture} from './kill-feed-fixtures.js';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -41,7 +42,7 @@ export async function connect(f:Fixture,onRequest?:(request:Record<string,any>,w
 export function gameFixture() {
   const detail:Record<string,any>={uuid:playerId,name:'TestPlayer',online:true,notesAvailable:true,notes:[],cases:[],punish:{available:true,offenses:[{id:'xray',name:'X-Ray',group:'Cheating',steps:['warn','ban']}]},tsa:{available:true,packetChecks:42,detections:['<img src=x onerror=window.xss=true>']},ass:{},teams:{},discord:{},clockin:{},
     location:{available:true,source:'live',dimension:'minecraft:overworld',x:1,y:64,z:2},playtime:{available:true,seconds:3700},
-    storage:{source:'live',capturedAt:Date.now(),inventory:{available:true,groups:[{name:'Hotbar',slots:[{empty:false,label:'Hotbar 1',id:'test:gem',name:'<img src=x onerror=window.xss=true>',count:12,maxDamage:100,damage:5,enchantments:['Unbreaking 3'],lore:['A gem']},{empty:true,label:'Hotbar 2'}]}]},enderChest:{available:true,groups:[]},curios:{available:false,reason:'Curios unavailable'}}};
+    storage:{source:'live',capturedAt:Date.now(),inventory:{available:true,groups:[{name:'Hotbar',slots:[{empty:false,label:'Hotbar 1',id:'test:gem',name:'<img src=x onerror=window.xss=true>',nbt:nbtFixture,count:12,maxDamage:100,damage:5,enchantments:['Unbreaking 3'],lore:['A gem']},{empty:true,label:'Hotbar 2'}]}]},enderChest:{available:true,groups:[]},curios:{available:false,reason:'Curios unavailable'}}};
   const players={players:[{uuid:playerId,name:'TestPlayer',online:true,hasDetections:true},{uuid:'00000000-0000-0000-0000-000000000002',name:'OfflinePlayer',online:false}],serverPlayers:1,maxPlayers:20,punishAvailable:true};
   const watches=new Map<WebSocket,Map<string,Record<string,any>>>();
   const publish=()=>{for(const [ws,entries] of watches)if(ws.readyState===WebSocket.OPEN)for(const [watchId,request] of entries){
@@ -55,6 +56,7 @@ export function gameFixture() {
       if(!watches.has(ws)){watches.set(ws,new Map());ws.on('close',()=>watches.delete(ws));}
       watches.get(ws)!.set(request.watchId,request);result={};
     }else if(request.operation==='unwatch'){watches.get(ws)?.delete(request.watchId);result={};}
+    else if(request.operation==='stats')result={totalPlayers:2,players:[],types:[]};
     else if(request.operation==='players')result=players;
     else if(request.operation==='player')result=detail;
     else {

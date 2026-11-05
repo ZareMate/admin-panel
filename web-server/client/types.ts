@@ -1,8 +1,9 @@
-export interface Session {name:string;rank:string;permissions:string[];csrf:string}
+import type {NbtNode} from './ItemNbt';
+export interface Session {discordId?:string;name:string;rank:string;permissions:string[];csrf:string}
 export interface Player {uuid:string;name:string;online:boolean;hasDetections?:boolean}
 export interface Note {id:string;text:string;author:string;createdAt:number;canEdit:boolean;system?:boolean}
 export interface Case {id:number;caseId:string;type:string;active:boolean;until?:number;removedBy?:string;replaced?:boolean;offense?:string;primary?:boolean;ipBased?:boolean;reason:string;by:string;at:number}
-export interface Slot {empty:boolean;label:string;id:string;name:string;count:number;selected?:boolean;damage:number;maxDamage:number;enchantments?:string[];lore?:string[]}
+export interface Slot {nbt?:NbtNode;nbtError?:string;empty:boolean;label:string;id:string;name:string;count:number;selected?:boolean;damage:number;maxDamage:number;enchantments?:string[];lore?:string[]}
 export interface StorageSection {available:boolean;reason?:string;groups:{name:string;slots:Slot[]}[]}
 export interface Detail extends Player {
   notesAvailable:boolean;notes:Note[];cases:Case[];

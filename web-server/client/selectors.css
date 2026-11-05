@@ -1,0 +1,19 @@
+.selector-group { display: flex; align-items: center; gap: 4px; }
+.selector-group.filter-tabs button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 6px 9px; border-radius: 5px; font-size: 11px; font-weight: 570; background: transparent; color: var(--muted); transition: color 180ms, background 180ms; }
+.selector-group.filter-tabs button.selected { background: #30423b; color: #e2f4d1; }
+.selector-group.filter-tabs button:hover { background: var(--panel2); color: var(--text); }
+.selector-group.filter-tabs button.selected:hover { background: #3a5046; }
+.select-field { min-width: 0; }
+.select-field select { min-width: 0; }
+@media (prefers-reduced-motion: reduce) { .selector-group button { transition: none !important; animation: none !important; } }
+.sliding-selector { position: relative; isolation: isolate; }
+.sliding-selector > button { position: relative; z-index: 1; }
+.selector-highlight { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 0; border-radius: 5px; background: #30423b; }
+.sliding-selector.filter-tabs > button.selected { background: transparent; }
+.sliding-selector.detail-tabs > .selector-highlight { background: transparent; border-radius: 0; }
+.sliding-selector.detail-tabs > .selector-highlight::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 2px; background: var(--accent); }
+.sliding-selector.detail-tabs > button.active::after { display: none; }
+.sidebar-selector > .selector-highlight { background: #283b32; border: 1px solid #415a43; border-radius: 9px; box-shadow: inset 3px 0 0 var(--accent); }
+.sidebar-selector > button.nav-button.active { background: transparent; border-color: transparent; box-shadow: none; animation: none; }
+
+.sliding-selector.filter-tabs > button:hover, .sliding-selector.filter-tabs > button.selected:hover { background: transparent; }

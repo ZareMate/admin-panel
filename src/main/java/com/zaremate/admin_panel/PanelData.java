@@ -36,6 +36,14 @@ final class PanelData {
             } catch (ReflectiveOperationException | LinkageError ignored) {}
             return result;
         });
+        Map<UUID, String> discordIds = main.call(() -> {
+            Map<UUID, String> links = new HashMap<>();
+            for (UUID id : names.keySet()) {
+                JsonObject link = discord(id, new JsonObject());
+                if (link.has("discordId")) links.put(id, link.get("discordId").getAsString());
+            }
+            return links;
+        });
         Map<UUID, JsonObject> tsa = tsaRecords();
         JsonArray players = new JsonArray();
         names.entrySet().stream().sorted(Comparator
@@ -44,6 +52,7 @@ final class PanelData {
             JsonObject row = new JsonObject();
             row.addProperty("uuid", e.getKey().toString()); row.addProperty("name", e.getValue());
             row.addProperty("online", online.contains(e.getKey()));
+            row.addProperty("discordId", discordIds.getOrDefault(e.getKey(), ""));
             row.addProperty("hasDetections", assDetected.contains(e.getKey()) || TsaReports.detected(tsa.get(e.getKey())));
             players.add(row);
         });
@@ -94,7 +103,7 @@ final class PanelData {
 
     JsonObject buildStatistics(MinecraftServer server) throws Exception {
         Map<UUID,String> all=collectPlayers(server);
-        return TsaStatistics.summarize(all.keySet(),tsaRecords(),TsaStatistics.configuredKeywords());
+        return TsaStatistics.build(all.keySet(),tsaRecords());
     }
 
     private Map<UUID, JsonObject> tsaRecords() {

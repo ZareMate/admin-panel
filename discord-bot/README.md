@@ -102,3 +102,10 @@ ID and auth guild, and rank-denial logs show configured versus member role IDs.
 Tickets, session/CSRF cookies, bot/bridge secrets and raw upstream error bodies
 are never logged. Deploy and restart the rebuilt bot and web service together
 to receive the specific error messages rather than the old generic 502.
+
+
+### To-do assignee directory
+
+The connected panel requests `todo-assignees` using its configured rank order and role IDs. The bot lists members of `DISCORD_AUTH_GUILD_ID` (falling back to `DISCORD_GUILD_ID`), selects each member's highest configured rank, and includes non-bot members whose rank has panel and To-do access. Pending membership-screening accounts are excluded. Discord nicknames and panel rank labels are returned; assignments persist Discord IDs so renames do not lose assignments.
+
+Enable **Server Members Intent** in the Discord developer portal for the bot's application so its REST guild member listing is permitted. The directory uses paginated member requests, not an incomplete gateway cache, and caches results for two minutes. No new messaging or channel permissions are needed. Update/restart the bot and web service together. Directory failures appear in the assignment picker; existing assignments and unassigned tasks remain editable.

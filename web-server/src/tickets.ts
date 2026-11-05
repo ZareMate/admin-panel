@@ -35,6 +35,8 @@ export class Tickets {
   if(selected!==undefined&&!categories.some(c=>c.id===selected))throw new Failure(403,'Ticket category permission required');
   const start=Number(offset??0);if(!Number.isSafeInteger(start)||start<0)throw new Failure(400,'Invalid offset');
   const rows=this.rows.filter(t=>t.category===selected);
-  return {categories,category:selected??null,tickets:rows.slice(start,start+50),total:rows.length,offset:start,updatedAt:this.updatedAt,stale:!this.updatedAt||Date.now()-this.updatedAt>90000};
+  const counts=Object.fromEntries(categories.map(c=>[c.id,0]));
+  for(const ticket of this.rows)if(Object.hasOwn(counts,ticket.category))counts[ticket.category]=(counts[ticket.category]??0)+1;
+  return {categories,counts,category:selected??null,tickets:rows.slice(start,start+50),total:rows.length,offset:start,updatedAt:this.updatedAt,stale:!this.updatedAt||Date.now()-this.updatedAt>90000};
  }
 }

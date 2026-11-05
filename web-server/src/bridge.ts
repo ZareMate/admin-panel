@@ -2,7 +2,7 @@ import { WebSocket } from 'ws';
 import { randomUUID } from 'node:crypto';
 import { Failure, type User } from './common.js';
 import { BatchReceiver } from './batches.js';
-import { GAME_PERMISSIONS } from './permissions.js';
+import { gamePermissionsFor } from './permissions.js';
 interface Pending { resolve:(value:unknown)=>void; reject:(error:Error)=>void; timer:NodeJS.Timeout }
 export class Bridge {
   private peer?: WebSocket;
@@ -83,7 +83,7 @@ export class Bridge {
       const actor=fields.actor as User|undefined;
       const gameFields=actor?{...fields,actor:{
         name:actor.name,uuid:actor.uuid,rank:actor.rank,
-        permissions:(actor.permissions??[]).filter(key=>GAME_PERMISSIONS.has(key))
+        permissions:gamePermissionsFor(operation,actor.permissions??[])
       }}:fields;
       const message=JSON.stringify({version:1,id,deadline:Date.now()+Math.min(this.timeout,15_000),operation,...gameFields});
       if (Buffer.byteLength(message)>65_536) { clearTimeout(timer); this.pending.delete(id); reject(new Failure(413,'Bridge request too large')); return; }

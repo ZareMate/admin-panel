@@ -14,6 +14,9 @@ interface Backend {
     default JsonObject tsaSettings(StaffActor actor, JsonObject update) throws Exception {
         throw new BridgeFailure(409, "TSA settings API is unavailable");
     }
+    default JsonObject killFeed(String query,int offset,int limit,UUID id,boolean inventory) throws Exception { throw new BridgeFailure(409,"Update the Admin Panel mod to use the kill feed"); }
+    default JsonObject mapClaims(String dimension) throws Exception { throw new BridgeFailure(409, "Update the Admin Panel mod to show FTB Chunks claims"); }
+    default JsonObject mapPlayers(boolean includeOffline) throws Exception { throw new BridgeFailure(409, "Update the Admin Panel mod to use the player map"); }
     default JsonObject statistics() throws Exception {
         throw new BridgeFailure(409, "Cheat statistics are unavailable");
     }

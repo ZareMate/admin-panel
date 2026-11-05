@@ -1,3 +1,8 @@
+import AddOutlined from '@mui/icons-material/AddOutlined';
+import {ToggleSelector} from './Selectors';
+import LocalCafeOutlined from '@mui/icons-material/LocalCafeOutlined';
+import FolderZipOutlined from '@mui/icons-material/FolderZipOutlined';
+import InsertDriveFileOutlined from '@mui/icons-material/InsertDriveFileOutlined';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Api } from './types';
 import { sortHashesByFilename } from './tsa-sort';
@@ -169,7 +174,7 @@ export function TsaLists({api,canEdit}:{api:Api;canEdit:boolean}) {
  },[snapshot,names,settings,unlisted,returned,queries,typeFilters,pageSize]);
  return <section id="tsa-board"><div className="card section-header"><div><h2>Hash and filename lists</h2><p className="muted">Drag a hash between columns, or use Allow and Blacklist. Enforcement follows TSA’s global mode.</p></div><button className="secondary" disabled={busy} onClick={()=>void load()}>Reload lists</button></div>
  {!canEdit&&<p className="notice">You have read-only access to TSA lists.</p>}{error&&<p className="banner error" role="alert">{error}</p>}{status&&<p className="notice" role="status">{status}</p>}
- <div className="tsa-pagination-control"><label htmlFor="tsa-page-size">Reference page size</label><select id="tsa-page-size" aria-label="TSA reference page size" value={pageSize} onChange={event=>{setPageSize(Number(event.target.value));setPages({});setUnlistedPage(0);}}>{PAGE_OPTIONS.map(size=><option key={size} value={size}>{size} items</option>)}</select><span className="muted">The shortest {pageSize}-item column sets a shared card-height budget.</span></div>
+ <div className="tsa-pagination-control"><span>Reference page size</span><ToggleSelector label="TSA reference page size" className="tsa-page-size-selector" value={String(pageSize)} options={PAGE_OPTIONS.map(size=>({value:String(size),label:String(size),id:'tsa-page-size-'+size}))} onChange={value=>{setPageSize(Number(value));setPages({});setUnlistedPage(0);}}/><span className="muted">The shortest {pageSize}-item column sets a shared card-height budget.</span></div>
  <div className="todo-columns tsa-columns">{[['BLACKLISTED','Blacklist'],['ALLOWED','Allow list']] .map(([key,title])=>{
   const id=key as string,hashes=filtered[id],paging=stateFor(id,pages[id]??0);
   return <section className={'todo-column '+(over===id?'drop-target':'')} data-tsa-list={id} key={id}
@@ -177,8 +182,8 @@ export function TsaLists({api,canEdit}:{api:Api;canEdit:boolean}) {
    onDragLeave={event=>{if(!event.currentTarget.contains(event.relatedTarget as Node|null))setOver(null);}}
    onDrop={event=>{event.preventDefault();const hash=dragged.current;dragged.current=null;setDragging(null);setOver(null);if(hash&&canEdit&&!busy)void move(hash,id);}}>
    <header><h2>{title as string}</h2><span className="pill">{hashes.length}</span></header>
-   <input className="board-search" type="search" aria-label={'Filter '+title+' by name or hash'} placeholder="Filter by name or hash…" value={queries[id]??''} onChange={event=>setFilter(id,event.target.value)}/>
-   <TypeFilters column={id} selected={typeFilters[id]??TSA_FILE_TYPES} toggle={type=>toggleType(id,type)}/>
+<div className="tsa-search-row"><input className="board-search" type="search" aria-label={'Filter '+title+' by name or hash'} placeholder="Filter by name or hash…" value={queries[id]??''} onChange={event=>setFilter(id,event.target.value)}/>
+   <TypeFilters column={id} selected={typeFilters[id]??TSA_FILE_TYPES} toggle={type=>toggleType(id,type)}/></div>
    <AddHash id={id} disabled={!snapshot||!canEdit||busy} add={hash=>run([{list:id,action:'add',hash}])}/>
    <div className="tsa-page-cards">{hashes.slice(paging.range.start,paging.range.end).map(hash=>hashCard(hash,id))}</div>
    {!hashes.length&&<p className="empty">No matching entries.</p>}
@@ -194,8 +199,8 @@ export function TsaLists({api,canEdit}:{api:Api;canEdit:boolean}) {
   onDrop={event=>{event.preventDefault();const hash=dragged.current;dragged.current=null;setDragging(null);setOver(null);if(hash&&canEdit&&!busy)void move(hash,'UNLISTED');}}>
   <header><h2>Unlisted</h2><span className="pill">{unresolved.length}</span></header>
   <p className="muted">Files from the latest cached scans of {scanned} player(s). Drag here to remove a hash from all hash lists. Run /tsa unlisted in-game for fresh inventories.</p>
-  <input className="board-search" type="search" aria-label="Filter Unlisted by name or hash" placeholder="Filter by name or hash…" value={queries.UNLISTED??''} onChange={event=>setFilter('UNLISTED',event.target.value)}/>
-  <TypeFilters column="UNLISTED" selected={typeFilters.UNLISTED??TSA_FILE_TYPES} toggle={type=>toggleType('UNLISTED',type)}/>
+<div className="tsa-search-row"><input className="board-search" type="search" aria-label="Filter Unlisted by name or hash" placeholder="Filter by name or hash…" value={queries.UNLISTED??''} onChange={event=>setFilter('UNLISTED',event.target.value)}/>
+  <TypeFilters column="UNLISTED" selected={typeFilters.UNLISTED??TSA_FILE_TYPES} toggle={type=>toggleType('UNLISTED',type)}/></div>
   {inventoryError&&<p className="error" role="alert">{inventoryError}</p>}
   <div className="tsa-page-cards">{unresolved.slice(unlistedState.range.start,unlistedState.range.end).map(hash=>unlistedCard(hash))}</div>
   {!unresolved.length&&!inventoryError&&<p className="empty">No unlisted files in cached scans.</p>}
@@ -210,12 +215,8 @@ export function TsaLists({api,canEdit}:{api:Api;canEdit:boolean}) {
  </section>;
 }
 function TypeFilters({column,selected,toggle}:{column:string;selected:readonly TsaFileType[];toggle:(type:TsaFileType)=>void}) {
- return <div className="tsa-type-filters" role="group" aria-label={column+' file type filters'}>
-  {TSA_FILE_TYPES.map(type=><button key={type} type="button" className={'secondary small tsa-type-filter '+(selected.includes(type)?'active':'')}
-   aria-label={column+' '+(type==='other'?'Other':'.'+type)} aria-pressed={selected.includes(type)} onClick={()=>toggle(type)}>
-   {type==='other'?'Other':'.'+type}
-  </button>)}
- </div>;
+ const icons={jar:<LocalCafeOutlined fontSize="small" aria-hidden="true"/>,zip:<FolderZipOutlined fontSize="small" aria-hidden="true"/>,other:<InsertDriveFileOutlined fontSize="small" aria-hidden="true"/>};
+ return <ToggleSelector className="tsa-type-filters" label={column+' file type filters'} multiple value={selected} onChange={value=>toggle(value as TsaFileType)} options={TSA_FILE_TYPES.map(type=>({value:type,label:icons[type],ariaLabel:column+' '+(type==='other'?'Other':'.'+type),title:type==='other'?'Other files':type==='jar'?'Java archives (.jar)':'ZIP archives (.zip)'}))}/>;
 }
 function FileLabel({hash,entries,reason}:{hash:string;entries?:Entry[];reason?:string}) {
  const labels=[...new Set(entries?.map(entry=>entry.filename)??[])];
@@ -227,7 +228,7 @@ function Pages({page,total,change}:{page:number;total:number;change:(value:numbe
  if(total<=1)return null;return <div className="board-actions"><button className="secondary small" disabled={!page} onClick={()=>change(page-1)}>Previous</button><span>{page+1} / {total}</span><button className="secondary small tsa-page-nav-next" disabled={page+1>=total} onClick={()=>change(page+1)}>Next</button></div>;
 }
 function AddHash({id,disabled,add}:{id:string;disabled:boolean;add:(hash:string)=>Promise<boolean>}) {
- const [hash,setHash]=useState('');return <form className="tsa-list-add" onSubmit={async event=>{event.preventDefault();if(await add(hash))setHash('');}}><label>SHA-256 hash<input aria-label={'Add hash to '+id} required pattern="[a-fA-F0-9]{64}" maxLength={64} disabled={disabled} value={hash} onChange={event=>setHash(event.target.value.trim().toLowerCase())}/></label><button className="primary" disabled={disabled}>Add entry</button></form>;
+ const [hash,setHash]=useState('');return <form className="tsa-list-add" onSubmit={async event=>{event.preventDefault();if(await add(hash))setHash('');}}><label htmlFor={'tsa-add-'+id}>SHA-256 hash</label><div className="tsa-add-row"><input id={'tsa-add-'+id} aria-label={'Add hash to '+id} required pattern="[a-fA-F0-9]{64}" maxLength={64} disabled={disabled} value={hash} onChange={event=>setHash(event.target.value.trim().toLowerCase())}/><button type="submit" className="primary tsa-add-button" aria-label="Add entry" title="Add entry" disabled={disabled}><AddOutlined fontSize="small" aria-hidden="true"/></button></div></form>;
 }
 function FilenameEditor({entries,disabled,run}:{entries:string[];disabled:boolean;run:(changes:Change[])=>Promise<boolean>}) {
  const [name,setName]=useState('');return <><ul>{entries.map(entry=><li key={entry}>{entry}<button className="danger small" disabled={disabled} onClick={()=>void run([{list:'FILENAMES',action:'remove',name:entry}])}>Remove</button></li>)}</ul><form onSubmit={async event=>{event.preventDefault();if(await run([{list:'FILENAMES',action:'add',name}]))setName('');}}><label>Filename<input required value={name} maxLength={1024} disabled={disabled} onChange={event=>setName(event.target.value)}/></label><button className="primary" disabled={disabled}>Add filename</button></form></>;

@@ -3,7 +3,7 @@ loaderVersion="[1,)"
 license="MIT"
 [[mods]]
 modId="admin_panel"
-version="2.1.0"
+version="2.2.0"
 displayName="Admin Panel"
 authors="ZareMate"
 description='''Outbound WebSocket bridge to the standalone Admin Panel service.'''

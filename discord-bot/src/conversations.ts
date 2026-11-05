@@ -1,3 +1,4 @@
+import {todoAssignees,TodoAssigneeError} from './todo-assignees.js';
 import { loginMember, LoginLookupError } from './minecraft-login.js';
 import { suggestionCommand, suggestionThread, SuggestionError, SUGGESTION_ACTIONS } from './suggestions.js';
 import { staffSignature } from './signature.js';
@@ -14,6 +15,7 @@ export async function messageView(m:Message,format:ReturnType<typeof mentionForm
   attachments:[...m.attachments.values()].map(a=>({name:a.name,url:a.url,contentType:a.contentType,size:a.size,width:a.width,height:a.height,spoiler:a.spoiler})),embeds};
 }
 export async function conversationCommand(guild:Guild,config:TicketConfig,c:Record<string,unknown>,authGuildId= guild.id) {
+ if(c.action==='todo-assignees')return todoAssignees(guild,authGuildId,c);
  if(c.action==='minecraft-login-member')return loginMember(guild,authGuildId,c);
  if(SUGGESTION_ACTIONS.includes(String(c.action)))return suggestionCommand(guild,config,c);
  const suggestion=c.action==='suggestions-history'||c.action==='suggestions-reply';
@@ -57,7 +59,7 @@ export function connectConversations(guild:Guild,config:TicketConfig,authGuildId
    const send=async(value:unknown)=>{const body=JSON.stringify(value);if(Buffer.byteLength(body)>60000)throw new Error('Message too large');await new Promise<void>((resolve,reject)=>ws.send(body,error=>error?reject(error):resolve()));};
    if(active>=4){await send({type:'done',id:c.id,error:true}).catch(()=>{});return;}active++;
    try{const result=await conversationCommand(guild,config,c,authGuildId);for(const message of result.messages)await send({type:'item',id:c.id,message});await send({type:'done',id:c.id,hasMore:result.hasMore});}
-   catch(error){await send({type:'done',id:c.id,error:true,errorCode:error instanceof SuggestionError||error instanceof LoginLookupError?error.code:undefined}).catch(()=>{});}finally{active--;}
+   catch(error){await send({type:'done',id:c.id,error:true,errorCode:error instanceof SuggestionError||error instanceof LoginLookupError||error instanceof TodoAssigneeError?error.code:undefined}).catch(()=>{});}finally{active--;}
   });
   ws.on('open',()=>console.log('Ticket conversations connected.',{messagingGuild:guild.id,authGuild:authGuildId}));
   ws.on('error',()=>{});

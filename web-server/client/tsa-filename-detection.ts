@@ -1,8 +1,8 @@
 /**
- * Match TSA's TsaFilenameDetection.findFilenameKeyword rules:
+ * Use TSA filename normalization and exemptions for panel category labels:
  * NFKC, lowercase, strip all characters outside ASCII a-z and 0-9,
  * skip names exempted by either filename allowlist, and return the
- * first configured keyword found (configuration order).
+ * longest matching normalized keyword (configuration order breaks equal-length ties).
  * This describes a CURRENT match, not historical blacklist provenance.
  */
 export const sanitizeTsaFilename=(name:string):string=>
@@ -14,12 +14,9 @@ export function filenameDetectionKeyword(
  allowedNames:readonly string[],
 ):string {
  const allowed=new Set(allowedNames.map(sanitizeTsaFilename));
- const normalizedKeywords=keywords.map(sanitizeTsaFilename).filter(Boolean);
- for(const filename of filenames) {
-  const name=sanitizeTsaFilename(filename);
-  if(!name||allowed.has(name))continue;
-  for(const keyword of normalizedKeywords)if(name.includes(keyword))return keyword;
- }
+ const normalizedKeywords=keywords.map(sanitizeTsaFilename).filter(Boolean).sort((a,b)=>b.length-a.length);
+ const names=filenames.map(sanitizeTsaFilename).filter(name=>name&&!allowed.has(name));
+ for(const keyword of normalizedKeywords)if(names.some(name=>name.includes(keyword)))return keyword;
  return '';
 }
 

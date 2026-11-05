@@ -13,11 +13,14 @@ import java.util.concurrent.*;
 
 final class MinecraftBackend implements Backend {
     private final MinecraftServer server;
+    private final KillFeedStore killFeed;
     private final ServerThread main;
     private final PanelData data;
     private final Path worldRoot;
     private final Path playerDirectory;
-    MinecraftBackend(MinecraftServer server) {
+    private final MapPlayerPositions mapPositions=new MapPlayerPositions();
+    MinecraftBackend(MinecraftServer server,KillFeedStore killFeed) {
+        this.killFeed=killFeed;
         this.server = server;
         this.main = new ServerThread(server, server::isSameThread);
         this.worldRoot = server.getWorldPath(LevelResource.ROOT);
@@ -47,6 +50,39 @@ final class MinecraftBackend implements Backend {
         if (update != null) actor.require("tsa.configure");
         return TsaSettings.access(update);
     }
+    public JsonObject killFeed(String query,int offset,int limit,UUID id,boolean inventory) throws Exception {
+        requireWorker();
+        try{return (id==null?killFeed.page(query,offset,limit):killFeed.detail(id,inventory)).get(15,TimeUnit.SECONDS);}
+        catch(ExecutionException error){if(error.getCause() instanceof RuntimeException cause)throw cause;throw error;}
+    }
+    public JsonObject mapClaims(String dimension) throws Exception {
+        requireWorker();
+        return FtbMapClaims.json(onServer(() -> FtbMapClaims.capture(dimension)));
+    }
+    public JsonObject mapPlayers(boolean includeOffline) throws Exception {
+        requireWorker();
+        JsonObject snapshot=onServer(() -> {
+            JsonArray captured=new JsonArray();
+            for(var player:server.getPlayerList().getPlayers()) {
+                JsonObject row=new JsonObject();
+                row.addProperty("uuid",player.getUUID().toString());
+                row.addProperty("name",player.getGameProfile().getName());
+                row.addProperty("dimension",player.level().dimension().location().toString());
+                row.addProperty("x",player.getX());row.addProperty("y",player.getY());row.addProperty("z",player.getZ());
+                row.addProperty("online",true);captured.add(row);
+            }
+            JsonArray dimensions=new JsonArray();
+            for(var level:server.getAllLevels())dimensions.add(level.dimension().location().toString());
+            var overworld=server.overworld();var spawnPos=overworld.getSharedSpawnPos();
+            JsonObject spawn=new JsonObject();spawn.addProperty("dimension",overworld.dimension().location().toString());
+            spawn.addProperty("x",spawnPos.getX());spawn.addProperty("y",spawnPos.getY());spawn.addProperty("z",spawnPos.getZ());
+            JsonObject capture=new JsonObject();capture.add("players",captured);capture.add("dimensions",dimensions);capture.add("spawn",spawn);return capture;
+        });
+        JsonArray players=snapshot.getAsJsonArray("players");
+        long capturedAt=System.currentTimeMillis();
+        if(includeOffline)players=mapPositions.withOffline(players,playerDirectory,server.getServerDirectory().resolve("usercache.json"));
+        JsonObject result=new JsonObject();result.add("players",players);result.add("dimensions",snapshot.get("dimensions"));result.add("spawn",snapshot.get("spawn"));result.addProperty("updatedAt",capturedAt);return result;
+    }
     public JsonObject statistics() throws Exception {
         requireWorker();
         return data.buildStatistics(server);
@@ -64,20 +100,24 @@ final class MinecraftBackend implements Backend {
     public JsonObject player(UUID id, StaffActor viewer) throws Exception {
         requireWorker();
         JsonObject result = detail(id, viewer);
+        var nbt=new ItemNbtView.Capture();
+        java.util.function.BiConsumer<JsonObject,net.minecraft.world.item.ItemStack> capture=
+                viewer.has("tab.inventory")||viewer.has("tab.enderChest")||viewer.has("tab.curios")
+                ?(view,stack)->nbt.item(view,stack,server.registryAccess()):null;
         LivePlayer live = onServer(() -> {
             var online = server.getPlayerList().getPlayer(id);
             if (online == null) return null;
             Long ticks = null;
             try { ticks = (long) server.getPlayerList().getPlayerStats(online).getValue(Stats.CUSTOM.get(Stats.PLAY_TIME)); }
             catch (RuntimeException ignored) {}
-            return new LivePlayer(InventoryData.readLive(server, id), location(id), ticks);
+            return new LivePlayer(InventoryData.readLive(server, id,capture), location(id), ticks);
         });
         if (live != null) {
             result.add("storage", live.storage()); result.add("location", live.location());
             result.add("playtime", playtime(live.ticks()));
         } else {
             SavedPlayer saved = SavedPlayer.read(playerDirectory.resolve(id + ".dat"));
-            result.add("storage", onServer(() -> InventoryData.readSaved(server, saved)));
+            result.add("storage", onServer(() -> InventoryData.readSaved(server, saved,capture)));
             result.add("location", savedLocation(saved));
             Long ticks = null;
             try (var reader = Files.newBufferedReader(worldRoot.resolve("stats").resolve(id + ".json"))) {
@@ -86,7 +126,7 @@ final class MinecraftBackend implements Backend {
             } catch (Exception ignored) {}
             result.add("playtime", playtime(ticks));
         }
-        return Permissions.detail(result, viewer);
+        nbt.apply();return Permissions.detail(result, viewer);
     }
     private static JsonObject playtime(Long ticks) {
         JsonObject result = new JsonObject(); result.addProperty("available", ticks != null);

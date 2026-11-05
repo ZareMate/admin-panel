@@ -19,6 +19,8 @@ test('ticket snapshots are atomic, ordered, validated and remove old entries',()
 });
 test('every category requires its own permission and the parent tab; pagination is bounded',()=>{
  const store=new Tickets();store.accept(batch(Array.from({length:120},(_,i)=>({...row,id:String(12345678901234567n+BigInt(i))}))));
+ assert.deepEqual(store.list(user,undefined,0).counts,{[TICKET_CATEGORIES[0]!.id]:120});
+ assert.deepEqual(store.list({permissions:['tab.tickets']},undefined,0).counts,{});
  assert.equal(store.list(user,undefined,0).tickets.length,50);assert.equal(store.list(user,undefined,100).tickets.length,20);
  for(const c of TICKET_CATEGORIES){assert.throws(()=>store.list({permissions:['tab.tickets']},c.id,0),/permission/);assert.throws(()=>store.list({permissions:['tickets.'+c.id]},c.id,0),/tab.tickets/);}
  assert.deepEqual(store.list(user,undefined,0).categories,[TICKET_CATEGORIES[0]]);
@@ -48,6 +50,7 @@ test('bot batches reach authenticated panel endpoint and cannot bypass staff cat
   const get=(query='')=>f.app.inject({url:'/api/tickets'+query,headers:headers(f,staff)});
   assert.equal((await get()).json().total,150);assert.equal((await get('?category=report')).statusCode,403);
   assert.equal((await get()).json().categories.length,1);
+  assert.equal((await get('/counts')).json().total,150);
  }finally{await f.close();}
 });
 

@@ -125,7 +125,16 @@ final class BridgeClient implements AutoCloseable {
                 boolean update = operation.equals("tsa-setting-update");
                 if (update) user.require("tsa.configure");
                 result = backend.tsaSettings(user, update ? request.getAsJsonObject("body") : null);
-            } else if (operation.equals("stats")) result = backend.statistics();
+            } else if (operation.equals("map-players")) result = backend.mapPlayers(request.has("includeOffline") && request.get("includeOffline").getAsBoolean());
+            else if (operation.equals("map-claims")) result = backend.mapClaims(RequestFields.string(request,"dimension",128));
+            else if (operation.equals("kill-feed")) {
+                StaffActor user=actor(request.getAsJsonObject("actor"));user.require("tab.killFeed");
+                UUID id=request.has("entry")?UUID.fromString(RequestFields.string(request,"entry",36)):null;
+                int offset=request.has("offset")?request.get("offset").getAsInt():0,limit=request.has("limit")?request.get("limit").getAsInt():25;
+                if(offset<0||limit<1||limit>50)throw new IllegalArgumentException("Invalid kill-feed page");
+                result=backend.killFeed(request.has("query")?request.get("query").getAsString():"",offset,limit,id,user.has("killFeed.inventory"));
+            }
+            else if (operation.equals("stats")) result = backend.statistics();
             else if (operation.equals("players")) result = backend.players();
             else {
                 UUID id = UUID.fromString(request.get("player").getAsString());

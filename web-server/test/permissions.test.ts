@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { readFile, appendFile } from 'node:fs/promises';
 import { fixture, login, headers, connect, gameFixture, playerId } from './helpers.js';
-import { PERMISSIONS, PERMISSION_GROUPS, GAME_PERMISSIONS, filterDetail, legacyPermissions } from '../src/permissions.js';
+import { PERMISSIONS, PERMISSION_GROUPS, GAME_PERMISSIONS, gamePermissionsFor, filterDetail, legacyPermissions } from '../src/permissions.js';
 import { loadConfig, saveRanks, validateRanks } from '../src/config.js';
 
 test('explicit permissions override rank names and gate every tab and mutation before bridge dispatch',async()=>{
@@ -72,17 +72,28 @@ test('permission editor groups cover each grant exactly once',()=>{
 test('game bridge omits web-only grants while preserving TSA and player permissions',async()=>{
  const f=await fixture();try{
   const account=f.config.users.get('admin')!;
-  account.permissions=['panel.access','tab.players','tab.notes','notes.edit','tab.tsaConfig','tsa.configure','tsa.lists.edit','tab.suggestions','suggestions.status','tab.todo','todo.create'];
+  account.permissions=['panel.access','tab.players','tab.notes','notes.edit','tab.tsaConfig','tsa.configure','tsa.lists.edit','tab.suggestions','suggestions.status','tab.todo','todo.create','tab.killFeed','killFeed.inventory'];
   const staff=await login(f),game=gameFixture();await connect(f,game.handler);
   assert.equal((await f.app.inject({url:'/api/players/'+playerId,headers:headers(f,staff)})).statusCode,200);
   assert.equal((await f.app.inject({url:'/api/tsa/lists',headers:headers(f,staff)})).statusCode,200);
-  const expected=['panel.access','tab.players','tab.notes','notes.edit','tab.tsaConfig','tsa.configure','tsa.lists.edit'];
+  const expected:Record<string,string[]>={player:['panel.access','tab.players','tab.notes','notes.edit'],'tsa-lists':['panel.access','tab.tsaConfig','tsa.configure','tsa.lists.edit']};
   for(const operation of ['player','tsa-lists']){
    const sent=game.messages.find(message=>message.operation===operation);
    assert(sent,operation);
-   assert.deepEqual([...sent.actor.permissions].sort(),[...expected].sort());
+   assert.deepEqual([...sent.actor.permissions].sort(),[...expected[operation]!].sort());
   }
   assert(GAME_PERMISSIONS.has('tab.tsaConfig'));
   assert(!GAME_PERMISSIONS.has('suggestions.status'));
  }finally{await f.close();}
+});
+
+
+test('kill-feed grants never reach TSA or player requests against older mods',()=>{
+ const actor=['panel.access','tab.players','tab.notes','notes.edit','tab.tsaConfig','tsa.configure','tsa.lists.edit','tab.killFeed','killFeed.inventory','suggestions.status'];
+ assert.deepEqual(gamePermissionsFor('tsa-lists',actor),['panel.access','tab.tsaConfig','tsa.configure','tsa.lists.edit']);
+ assert.deepEqual(gamePermissionsFor('tsa-setting-update',actor),['panel.access','tab.tsaConfig','tsa.configure','tsa.lists.edit']);
+ assert.deepEqual(gamePermissionsFor('player',actor),['panel.access','tab.players','tab.notes','notes.edit']);
+ assert.deepEqual(gamePermissionsFor('watch',actor),['panel.access','tab.players','tab.notes','notes.edit']);
+ assert.deepEqual(gamePermissionsFor('kill-feed',actor),['panel.access','tab.killFeed','killFeed.inventory']);
+ assert.deepEqual(gamePermissionsFor('tsa-lists',['tab.killFeed','killFeed.inventory']),[],'feature permissions must not grant TSA access');
 });

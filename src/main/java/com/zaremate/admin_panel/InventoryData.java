@@ -13,21 +13,28 @@ import java.util.function.IntFunction;
 
 /** Read-only snapshots. Never loads an offline player entity or writes player data. */
 final class InventoryData {
-    static JsonObject readLive(MinecraftServer server, UUID id) {
+    static JsonObject readDeath(net.minecraft.server.level.ServerPlayer player,java.util.function.BiConsumer<JsonObject,ItemStack> capture) {
+        JsonObject result=new JsonObject();
+        result.add("inventory",inventory(i->player.getInventory().getItem(i),player.getInventory().selected,capture));
+        result.add("curios",curios(player,capture));return result;
+    }
+    static JsonObject readLive(MinecraftServer server,UUID id){return readLive(server,id,null);}
+    static JsonObject readLive(MinecraftServer server, UUID id,java.util.function.BiConsumer<JsonObject,ItemStack> capture) {
         var online = server.getPlayerList().getPlayer(id);
         JsonObject result = new JsonObject();
         result.addProperty("source", online == null ? "saved" : "live");
         result.addProperty("capturedAt", System.currentTimeMillis());
         if (online != null) {
-            result.add("inventory", inventory(i -> online.getInventory().getItem(i), online.getInventory().selected));
-            result.add("enderChest", container("Ender Chest", 27, i -> online.getEnderChestInventory().getItem(i)));
-            result.add("curios", curios(online));
+            result.add("inventory", inventory(i -> online.getInventory().getItem(i), online.getInventory().selected,capture));
+            result.add("enderChest", container("Ender Chest", 27, i -> online.getEnderChestInventory().getItem(i),capture));
+            result.add("curios", curios(online,capture));
             return result;
         }
         throw new IllegalStateException("Live inventory requested for an offline player");
     }
     // Registry/component codecs remain on the server thread; disk read and decompression already finished.
-    static JsonObject readSaved(MinecraftServer server, SavedPlayer saved) {
+    static JsonObject readSaved(MinecraftServer server,SavedPlayer saved){return readSaved(server,saved,null);}
+    static JsonObject readSaved(MinecraftServer server, SavedPlayer saved,java.util.function.BiConsumer<JsonObject,ItemStack> capture) {
         JsonObject result = new JsonObject();
         result.addProperty("source", "saved"); result.addProperty("capturedAt", System.currentTimeMillis());
         result.add("curios", unavailable("Curios inspection requires an online player."));
@@ -46,7 +53,7 @@ final class InventoryData {
                     int slot = inventoryIndex(entry.getByte("Slot") & 255);
                     if (slot >= 0) items[slot] = ItemStack.parse(server.registryAccess(), entry).orElseThrow(() -> new IllegalArgumentException("Unreadable saved item"));
                 }
-                result.add("inventory", inventory(i -> items[i], data.getInt("SelectedItemSlot")));
+                result.add("inventory", inventory(i -> items[i], data.getInt("SelectedItemSlot"),capture));
             } else result.add("inventory", unavailable("Saved inventory is missing or has an unsupported format."));
             if (data.contains("EnderItems", Tag.TAG_LIST)) {
                 for (Tag raw : data.getList("EnderItems", Tag.TAG_COMPOUND)) {
@@ -54,7 +61,7 @@ final class InventoryData {
                     int slot = entry.getByte("Slot") & 255;
                     if (slot < 27) ender[slot] = ItemStack.parse(server.registryAccess(), entry).orElseThrow(() -> new IllegalArgumentException("Unreadable saved item"));
                 }
-                result.add("enderChest", container("Ender Chest", 27, i -> ender[i]));
+                result.add("enderChest", container("Ender Chest", 27, i -> ender[i],capture));
             } else result.add("enderChest", unavailable("Saved Ender Chest is missing or has an unsupported format."));
         } catch (Exception e) {
             result.add("inventory", unavailable("Could not decode the saved inventory with this server's item registry."));
@@ -69,22 +76,25 @@ final class InventoryData {
     }
     private static ItemStack[] empty(int size) { ItemStack[] a = new ItemStack[size]; Arrays.fill(a, ItemStack.EMPTY); return a; }
     static JsonObject unavailable(String reason) { JsonObject r = new JsonObject(); r.addProperty("available", false); r.addProperty("reason", reason); return r; }
-    private static JsonObject inventory(IntFunction<ItemStack> items, int selected) {
+    private static JsonObject inventory(IntFunction<ItemStack> items,int selected){return inventory(items,selected,null);}
+    private static JsonObject inventory(IntFunction<ItemStack> items, int selected,java.util.function.BiConsumer<JsonObject,ItemStack> capture) {
         JsonObject r = new JsonObject(); r.addProperty("available", true);
         JsonArray groups = new JsonArray();
-        groups.add(group("Hotbar", 9, i -> items.apply(i), i -> "Hotbar " + (i+1), selected));
-        groups.add(group("Main inventory", 27, i -> items.apply(i+9), i -> "Slot " + (i+9), -1));
-        groups.add(group("Armor", 4, i -> items.apply(39-i), i -> List.of("Helmet", "Chestplate", "Leggings", "Boots").get(i), -1));
-        groups.add(group("Offhand", 1, i -> items.apply(40), i -> "Offhand", -1));
+        groups.add(group("Hotbar", 9, i -> items.apply(i), i -> "Hotbar " + (i+1), selected,capture));
+        groups.add(group("Main inventory", 27, i -> items.apply(i+9), i -> "Slot " + (i+9), -1,capture));
+        groups.add(group("Armor", 4, i -> items.apply(39-i), i -> List.of("Helmet", "Chestplate", "Leggings", "Boots").get(i), -1,capture));
+        groups.add(group("Offhand", 1, i -> items.apply(40), i -> "Offhand", -1,capture));
         r.add("groups", groups); return r;
     }
-    private static JsonObject container(String name, int size, IntFunction<ItemStack> items) {
+    private static JsonObject container(String name,int size,IntFunction<ItemStack> items){return container(name,size,items,null);}
+    private static JsonObject container(String name, int size, IntFunction<ItemStack> items,java.util.function.BiConsumer<JsonObject,ItemStack> capture) {
         JsonObject r = new JsonObject(); r.addProperty("available", true); JsonArray groups = new JsonArray();
-        groups.add(group(name, size, items, i -> "Slot " + i, -1)); r.add("groups", groups); return r;
+        groups.add(group(name, size, items, i -> "Slot " + i, -1,capture)); r.add("groups", groups); return r;
     }
-    private static JsonObject group(String name, int size, IntFunction<ItemStack> items, IntFunction<String> labels, int selected) {
+    private static JsonObject group(String name,int size,IntFunction<ItemStack> items,IntFunction<String> labels,int selected){return group(name,size,items,labels,selected,null);}
+    private static JsonObject group(String name, int size, IntFunction<ItemStack> items, IntFunction<String> labels, int selected,java.util.function.BiConsumer<JsonObject,ItemStack> capture) {
         JsonObject r = new JsonObject(); r.addProperty("name", name); JsonArray slots = new JsonArray();
-        for (int i=0; i<size; i++) { JsonObject slot = item(items.apply(i)); slot.addProperty("slot", i); slot.addProperty("label", labels.apply(i)); slot.addProperty("selected", i == selected); slots.add(slot); }
+        for (int i=0; i<size; i++) { ItemStack stack=items.apply(i);JsonObject slot = item(stack);if(capture!=null)capture.accept(slot,stack); slot.addProperty("slot", i); slot.addProperty("label", labels.apply(i)); slot.addProperty("selected", i == selected); slots.add(slot); }
         r.add("slots", slots); return r;
     }
     static JsonObject item(ItemStack stack) {
@@ -92,6 +102,7 @@ final class InventoryData {
         if (stack.isEmpty()) return r;
         r.addProperty("id", BuiltInRegistries.ITEM.getKey(stack.getItem()).toString());
         r.addProperty("name", stack.getHoverName().getString()); r.addProperty("count", stack.getCount());
+        var customName=stack.get(DataComponents.CUSTOM_NAME);if(customName!=null)r.addProperty("customName",customName.getString());
         if (stack.isDamageableItem()) { r.addProperty("damage", stack.getDamageValue()); r.addProperty("maxDamage", stack.getMaxDamage()); }
         JsonArray enchants = new JsonArray();
         stack.getEnchantments().entrySet().forEach(e -> enchants.add(e.getKey().value().description().getString() + " " + e.getIntValue()));
@@ -103,7 +114,8 @@ final class InventoryData {
         if (itemLore != null) itemLore.lines().forEach(line -> lore.add(line.getString()));
         r.add("lore", lore); return r;
     }
-    private static JsonObject curios(net.minecraft.server.level.ServerPlayer player) {
+    private static JsonObject curios(net.minecraft.server.level.ServerPlayer player){return curios(player,null);}
+    private static JsonObject curios(net.minecraft.server.level.ServerPlayer player,java.util.function.BiConsumer<JsonObject,ItemStack> capture) {
         if (!ModList.get().isLoaded("curios")) return unavailable("Curios is not installed on this server.");
         try {
             Class<?> api = Class.forName("top.theillusivec4.curios.api.CuriosApi");
@@ -118,7 +130,7 @@ final class InventoryData {
                 for (String method : List.of("getStacks", "getCosmeticStacks")) {
                     IItemHandler handler = (IItemHandler) slots.getMethod(method).invoke(entry.getValue());
                     if (handler.getSlots() > 512) throw new IllegalArgumentException("Too many accessory slots");
-                    groups.add(group(name + (method.equals("getStacks") ? " · Equipped" : " · Cosmetic"), handler.getSlots(), handler::getStackInSlot, i -> name + " " + (i+1), -1));
+                    groups.add(group(name + (method.equals("getStacks") ? " · Equipped" : " · Cosmetic"), handler.getSlots(), handler::getStackInSlot, i -> name + " " + (i+1), -1,capture));
                 }
             }
             JsonObject r = new JsonObject(); r.addProperty("available", true); r.add("groups", groups); return r;

@@ -1,3 +1,6 @@
+import {TodoAssignees} from './todo-assignees.js';
+import { Skins } from './skins.js';
+import { PlayerMap, mapDimension } from './player-map.js';
 import { MinecraftLogin } from './minecraft-login.js';
 import { Todos } from './todos.js';
 import { TicketBridge } from './ticket-bridge.js';
@@ -13,7 +16,7 @@ import { Audit } from './audit.js';
 import { Bridge } from './bridge.js';
 import { Live } from './live.js';
 import { Images, validItem } from './images.js';
-import { Failure, equal, object, text, uuid } from './common.js';
+import { Failure, equal, object, text, uuid, token } from './common.js';
 
 import { SUGGESTION_STATUSES } from './suggestion-statuses.js';
 import { has, mutationPermission, filterDetail, filterPlayers } from './permissions.js';
@@ -25,14 +28,17 @@ export async function createApp(config:Config, options:{bridge?:Bridge;fetcher?:
     requestTimeout:30_000,routerOptions:{maxParamLength:200}});
   const auth=new Auth(config,options.fetcher),bridge=options.bridge||new Bridge(),audit=new Audit(resolve(config.dataDir,'logs/admin-panel-audit.jsonl'));
   await audit.load();
-  const images=new Images(resolve(config.dataDir,'assets'),options.bundledDir||resolve('public'),options.fetcher);await images.init();
+  const images=new Images(resolve(config.dataDir,'assets'),options.bundledDir||resolve('public'));await images.init();
+  const skins=new Skins(resolve(config.dataDir,'cache/skins'),options.fetcher);await skins.init();
   const tickets=new Tickets(),ticketBridge=new TicketBridge(),todos=new Todos(resolve(config.dataDir,'todos.json'));await todos.load();
+  const todoAssignees=new TodoAssignees(config,ticketBridge);
+  const playerMap=new PlayerMap(resolve(config.dataDir,'map'));
   const minecraftLogin=new MinecraftLogin(config,ticketBridge,Date.now,(level,event,fields)=>app.log[level]({...fields,event},event));
   const requests=new Map<string,number>();let savingRanks=false,iconJobs=0;
   await app.register(cookie);
   await app.register(websocket,{options:{maxPayload:65536,perMessageDeflate:false}});
   const live=new Live(bridge,auth);
-  app.addHook('preClose',async()=>{live.close();bridge.close();ticketBridge.close();});
+  app.addHook('preClose',async()=>{playerMap.close();live.close();bridge.close();ticketBridge.close();});
   const sessionCookie={path:'/',httpOnly:true,sameSite:'strict' as const,secure:config.secure,maxAge:28800};
   const oauthCookie={path:'/api/auth/discord',httpOnly:true,sameSite:'lax' as const,secure:config.secure,maxAge:300};
   const publicRoutes=new Set(['/api/login','/api/auth/method','/api/auth/discord/start','/api/auth/discord/callback','/api/auth/minecraft/redeem']);
@@ -76,11 +82,14 @@ export async function createApp(config:Config, options:{bridge?:Bridge;fetcher?:
     if(status===500)req.log.error({name:err.name},'Request failed');
     reply.code(status).send({error:status===500?'Request failed. Check player history and audit before retrying.':err.message});
   });
-  app.get('/api/todos',async req=>{requirePermission(req.panelSession!.user,'tab.todo');return {tasks:todos.list()};});
-  app.post('/api/todos',async req=>{const user=req.panelSession!.user;requirePermission(user,'tab.todo');requirePermission(user,'todo.create');const result=await todos.mutate(user.name,req.body);await audit.write(user.name,'todo-create','','success',result);return result;});
+  app.get('/api/todos',async req=>{const user=req.panelSession!.user;requirePermission(user,'tab.todo');return {tasks:todos.list(),mine:todos.mine(user.discordId)};});
+  app.get('/api/todos/mine',async req=>{const user=req.panelSession!.user;requirePermission(user,'tab.todo');return todos.mine(user.discordId);});
+  app.get('/api/todos/assignees',async req=>{requirePermission(req.panelSession!.user,'tab.todo');return {assignees:await todoAssignees.list()};});
+  app.post('/api/todos',async req=>{const user=req.panelSession!.user;requirePermission(user,'tab.todo');requirePermission(user,'todo.create');const result=await todos.mutate(user.name,await todoAssignees.input(req.body));await audit.write(user.name,'todo-create','','success',result);return result;});
   app.post<{Params:{id:string;action:string}}>('/api/todos/:id/:action',async req=>{
     const user=req.panelSession!.user,action=req.params.action;if(!['edit','delete'].includes(action))throw new Failure(404,'Not found');requirePermission(user,'tab.todo');requirePermission(user,'todo.'+action);
-    const result=await todos.mutate(user.name,req.body,uuid(req.params.id),action==='delete');await audit.write(user.name,'todo-'+action,req.params.id,'success',result);return result;
+    const id=uuid(req.params.id),body=action==='delete'?req.body:await todoAssignees.input(req.body,todos.list().find(task=>task.id===id));
+    const result=await todos.mutate(user.name,body,id,action==='delete');await audit.write(user.name,'todo-'+action,req.params.id,'success',result);return result;
   });
   app.get<{Querystring:{archived?:string;cursor?:string;tags?:string;untagged?:string;q?:string}}>('/api/suggestions',async req=>{
     requirePermission(req.panelSession!.user,'tab.suggestions');
@@ -181,6 +190,7 @@ export async function createApp(config:Config, options:{bridge?:Bridge;fetcher?:
       }catch{socket.close(1008,'Invalid ticket batch');}
     });
   });
+  app.get('/api/tickets/counts',async req=>{const counts=tickets.list(req.panelSession!.user,undefined,0).counts;return {counts,total:Object.values(counts).reduce((sum,count)=>sum+count,0)};});
   app.get<{Querystring:{category?:string;offset?:string}}>('/api/tickets',async req=>tickets.list(req.panelSession!.user,req.query.category,req.query.offset));
   app.get('/bridge',{websocket:true},socket=>bridge.attach(socket));
   app.get('/api/live',{websocket:true},(socket,req)=>live.attach(socket,req.cookies.panel_session||''));
@@ -210,7 +220,7 @@ export async function createApp(config:Config, options:{bridge?:Bridge;fetcher?:
       reply.setCookie('panel_session',auth.create(login.user,login.expires),sessionCookie).clearCookie('panel_oauth',oauthCookie);return reply.redirect('/');
     }catch(error){reply.clearCookie('panel_oauth',oauthCookie);return reply.redirect('/?loginError='+encodeURIComponent(error instanceof Failure?error.message:'Discord sign-in failed. Try again.'));}
   });
-  app.get('/api/session',async req=>{const s=req.panelSession!;return {name:s.user.name,rank:s.user.rank,permissions:s.user.permissions||[],csrf:s.csrf};});
+  app.get('/api/session',async req=>{const s=req.panelSession!;return {name:s.user.name,discordId:s.user.discordId,rank:s.user.rank,permissions:s.user.permissions||[],csrf:s.csrf};});
   app.post('/api/logout',async(req,reply)=>{auth.logout(req.cookies.panel_session||'');live.revoke(req.cookies.panel_session||'');reply.clearCookie('panel_session',sessionCookie);return {};});
   app.post('/api/tsa/names',async req=>{
     const user=req.panelSession!.user;requirePermission(user,'tab.tsaConfig');
@@ -249,9 +259,51 @@ export async function createApp(config:Config, options:{bridge?:Bridge;fetcher?:
     try {const result=await bridge.call('tsa-setting-update',{actor:user,body:{setting,value:body.value}});await audit.write(user.name,'tsa-setting-update',setting,'success',{});return result;}
     catch(error){await audit.write(user.name,'tsa-setting-update',setting,'failed-or-unconfirmed',{});throw error;}
   });
+  app.get<{Querystring:{q?:string;offset?:string;limit?:string}}>('/api/kill-feed',async req=>{
+    const user=req.panelSession!.user;requirePermission(user,'tab.killFeed');
+    const offset=Number(req.query.offset??0),limit=Number(req.query.limit??25),query=req.query.q??'';
+    if(!Number.isSafeInteger(offset)||offset<0||!Number.isSafeInteger(limit)||limit<1||limit>50||query.length>128)throw new Failure(400,'Invalid kill-feed page');
+    const data=await bridge.call('kill-feed',{actor:user,query,offset,limit}) as {entries:Record<string,unknown>[]};
+    return {...data,entries:data.entries.map(entry=>{const copy={...entry};delete copy.inventory;return copy;})};
+  });
+  app.get<{Params:{id:string}}>('/api/kill-feed/:id',async req=>{
+    const user=req.panelSession!.user;requirePermission(user,'tab.killFeed');
+    const data=await bridge.call('kill-feed',{actor:user,entry:uuid(req.params.id)}) as Record<string,unknown>;
+    if(!has(user,'killFeed.inventory'))delete data.inventory;return data;
+  });
+  app.get<{Querystring:{offline?:string}}>('/api/map/players',async req=>{
+    requirePermission(req.panelSession!.user,'tab.map');
+    if(req.query.offline!==undefined&&!['true','false'].includes(req.query.offline))throw new Failure(400,'Invalid offline player option');
+    return bridge.call('map-players',{includeOffline:req.query.offline==='true'});
+  });
+  app.get<{Querystring:{dimension?:string}}>('/api/map/claims',async req=>{requirePermission(req.panelSession!.user,'tab.map');return bridge.call('map-claims',{dimension:mapDimension(req.query.dimension||'minecraft:overworld')});});
+  app.get<{Querystring:{dimension?:string}}>('/api/map/regions',async req=>{
+    requirePermission(req.panelSession!.user,'tab.map');return playerMap.regions(mapDimension(req.query.dimension||'minecraft:overworld'));
+  });
+  app.get<{Params:{region:string};Querystring:{dimension?:string}}>('/api/map/tiles/:region',async(req,reply)=>{
+    requirePermission(req.panelSession!.user,'tab.map');
+    return reply.type('image/png').send(await playerMap.tile(req.query.dimension||'minecraft:overworld',req.params.region));
+  });
+  app.post('/api/map/import',{bodyLimit:29*1024*1024},async req=>{
+    const user=req.panelSession!.user;requirePermission(user,'tab.map');requirePermission(user,'map.upload');
+    const body=object(req.body),dimension=mapDimension(body.dimension);
+    const result=await playerMap.import(dimension,text(body.filename,128,'Filename'),body.data);
+    await audit.write(user.name,'map-import',dimension+'/'+result.region.name,'success',{regions:result.regions,merged:result.merged,chunks:result.chunks});return result;
+  });
+  app.post('/api/map/remove',async req=>{
+    const user=req.panelSession!.user;requirePermission(user,'tab.map');requirePermission(user,'map.remove');
+    const body=object(req.body),dimension=mapDimension(body.dimension),region=text(body.region,32,'Region');
+    const result=await playerMap.remove(dimension,region);await audit.write(user.name,'map-remove',dimension+'/'+region,'success',{});return result;
+  });
   app.get('/api/stats',async req=>{
     requirePermission(req.panelSession!.user,'tab.stats');
     return bridge.call('stats');
+  });
+  app.get('/api/player-ranks',async req=>{
+    requirePermission(req.panelSession!.user,'tab.players');
+    const data=await bridge.players() as {players:{uuid:string;discordId?:string}[]};
+    const staff=await todoAssignees.list(true),byId=new Map(staff.map(person=>[person.id,person.rank]));
+    return {ranks:config.ranks.filter(rank=>has(rank,'panel.access')).map(rank=>rank.name),players:data.players.map(player=>({uuid:player.uuid,rank:player.discordId===undefined?undefined:byId.get(player.discordId)??null}))};
   });
   app.get('/api/players',async req=>{requirePermission(req.panelSession!.user,'tab.players');return filterPlayers(await bridge.players(),req.panelSession!.user);});
   app.get<{Params:{id:string}}>('/api/players/:id',async req=>{const user=req.panelSession!.user;requirePermission(user,'tab.players');return filterDetail(await bridge.player(uuid(req.params.id),user),user);});
@@ -277,17 +329,23 @@ export async function createApp(config:Config, options:{bridge?:Bridge;fetcher?:
     try {await saveRanks(config,object(req.body).ranks);await audit.write(req.panelSession!.user.name,'access-ranks-update','','success',{});return {restartRequired:true};}finally{savingRanks=false;}
   });
   app.post('/api/icons',async req=>{
-    if(!['inventory','enderChest','curios'].some(k=>has(req.panelSession!.user,'tab.'+k)))throw new Failure(403,'Storage permission required');
+    if(!has(req.panelSession!.user,'tab.killFeed')&&!['inventory','enderChest','curios'].some(k=>has(req.panelSession!.user,'tab.'+k)))throw new Failure(403,'Storage permission required');
     const ids=object(req.body).ids;if(!Array.isArray(ids)||ids.length>128||!ids.every(validItem))throw new Failure(400,'Expected at most 128 valid item IDs');
     if(iconJobs>=2)throw new Failure(503,'Icon service busy');iconJobs++;try{return await images.icons(ids as string[]);}finally{iconJobs--;}
   });
   app.get<{Params:{kind:string;name:string}}>('/api/skin/:kind/:name',async(req,reply)=>{
-    requirePermission(req.panelSession!.user,'tab.players');
-    const bytes=await images.skin(req.params.kind,req.params.name);return reply.header('Cache-Control','private, max-age=21600').type('image/png').send(bytes);
+    const user=req.panelSession!.user;
+    if(!(req.params.kind==='head'&&(has(user,'tab.map')||has(user,'tab.killFeed'))))requirePermission(user,'tab.players');
+    const skin=await skins.get(req.params.kind,req.params.name);return reply.header('Cache-Control','private, max-age='+Math.max(0,Math.floor((skin.expires-Date.now())/1000))).type('image/png').send(skin.bytes);
   });
   const publicDir=options.publicDir||resolve('dist/client');
   const index=await readFile(resolve(publicDir,'index.html'));
-  app.get('/',async(_req,reply)=>reply.type('text/html; charset=utf-8').send(index));
+  app.get('/',async(_req,reply)=>{
+    const nonce=token();
+    const policy=String(reply.getHeader('Content-Security-Policy'));
+    reply.header('Content-Security-Policy',policy.replace("style-src 'self'",`style-src 'self' 'nonce-${nonce}'`));
+    return reply.type('text/html; charset=utf-8').send(index.toString('utf8').replace('<head>',`<head><meta name="style-nonce" content="${nonce}">`));
+  });
   for(const file of await readdir(resolve(publicDir,'assets')).catch(()=>[])) {
     if(!/^[a-zA-Z0-9_.-]+\.(js|css)$/.test(file))continue;
     const data=await readFile(resolve(publicDir,'assets',file));

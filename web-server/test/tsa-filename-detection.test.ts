@@ -8,8 +8,8 @@ test('matches TSA filename sanitization, including Minecraft formatting codes an
  assert.equal(filenameDetectionKeyword(['§b§lSpectator Xray §7v1.2.1.zip'],['esp','xray'],[]),'xray');
  assert.equal(filenameDetectionKeyword(['Free_ESP.jar'],['esp'],[]),'esp');
 });
-test('uses TSA keyword order and ignores explicitly allowed filenames',()=>{
- assert.equal(filenameDetectionKeyword(['SuperXray.zip'],['ray','xray'],[]),'ray');
+test('prefers longest keywords and ignores explicitly allowed filenames',()=>{
+ assert.equal(filenameDetectionKeyword(['SuperXray.zip'],['ray','xray'],[]),'xray');
  assert.equal(filenameDetectionKeyword(['SuperXray.zip'],['xray','ray'],[]),'xray');
  assert.equal(filenameDetectionKeyword(['SuperXray.zip'],['ray'],['super-xray.zip']),'');
  assert.equal(filenameDetectionKeyword(['Other.jar','Esp.jar'],['esp'],[]),'esp');
@@ -59,4 +59,14 @@ test('type filtering supports multiple selections, associated filenames and unkn
  assert.equal(matchesTsaFileType([],other),true);
  assert.equal(matchesTsaFileType([],jar),false);
  assert.equal(matchesTsaFileType(['foo.jar'],new Set()),false);
+});
+
+
+test('longest normalized keyword wins across aliases, with stable equal-length ties',()=>{
+ assert.equal(filenameDetectionKeyword(['Glowing Ores Plus v19.0.0.zip'],['ore','ores'],[]),'ores');
+ assert.equal(filenameDetectionKeyword(['Glowing Ores Plus v19.0.0.zip'],['ores','ore'],[]),'ores');
+ assert.equal(filenameDetectionKeyword(['ore.zip','ores.zip'],['ore','ores'],[]),'ores');
+ assert.equal(filenameDetectionKeyword(['Glowing Ｏｒｅｓ Plus.zip'],['ore','o-r-e-s'],[]),'ores');
+ assert.equal(filenameDetectionKeyword(['ores.zip'],['ore','ores'],['ores.zip']),'');
+ assert.equal(filenameDetectionKeyword(['ray-esp.jar'],['esp','ray'],[]),'esp');
 });

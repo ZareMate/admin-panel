@@ -1,3 +1,8 @@
+import {ToggleSelector} from './Selectors';
+import {useTabTransition} from './useTabTransition';
+import {TabIcon,type TabIconName} from './TabIcon';
+import {ItemWindow} from './ItemWindow';
+import {skinPath,validSkinName} from '../src/skin';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Api, Session, Detail, Case, Slot } from './types';
 import { Avatar, date, Info, Pairs } from './App';
@@ -8,10 +13,11 @@ export interface Action {action:string;noteId?:string;caseId?:string;recordId?:n
 const makeAction=(action:string,fields:Partial<Action>={}):Action=>({action,...fields,requestId:Array.from(crypto.getRandomValues(new Uint8Array(32)),b=>b.toString(16).padStart(2,'0')).join('')});
 const status=(c:Case)=>c.removedBy?'removed':c.until&&c.until<=Date.now()?'expired':!c.active?c.replaced?'replaced':'inactive':['warn','kick'].includes(c.type)?'recorded':'current';
 const time=(seconds:number)=>{const m=Math.floor(Math.max(0,seconds)/60);return `${Math.floor(m/1440)}d ${Math.floor(m%1440/60)}h ${m%60}m`;};
-function Skin({name}:{name:string}){const [failed,setFailed]=useState(false);return failed||!/^[A-Za-z0-9_]{3,16}$/.test(name)?<p>Skin unavailable</p>:<img className="full-skin" src={'/api/skin/body/'+encodeURIComponent(name)} alt={`${name}'s Minecraft skin`} loading="lazy" onError={()=>setFailed(true)}/>;}
+function Skin({name}:{name:string}){const [failed,setFailed]=useState(false);return failed||!validSkinName(name)?<p>Skin unavailable</p>:<img className="full-skin" src={skinPath('body',name)} alt={`${name}'s Minecraft skin`} loading="lazy" onError={()=>setFailed(true)}/>;}
 export function PlayerDetail({player:p,session,api,action,setAction,changed}:{player:Detail;session:Session;api:Api;action:Action|null;setAction:(a:Action|null)=>void;changed:()=>Promise<void>}) {
   const allowed=tabs.filter(([key])=>has(session,'tab.'+key));
   const [selectedTab,setTab]=useState(allowed[0]?.[0]||'none');const tab=allowed.some(([key])=>key===selectedTab)?selectedTab:allowed[0]?.[0]||'none';
+  const tabTransition=useTabTransition(tab);
   const moderate=has(session,'tab.cases')&&['warn','kick','mute','ban','offense'].some(type=>has(session,'punish.'+type));
   const open=(name:string,fields:Partial<Action>={})=>setAction(makeAction(name,fields));
   let content:ReactNode;
@@ -40,7 +46,7 @@ export function PlayerDetail({player:p,session,api,action,setAction,changed}:{pl
   else if(tab==='none')content=<p>No profile tabs are permitted for your rank.</p>;
   else content=<Storage key={tab} player={p} kind={tab as 'inventory'|'enderChest'|'curios'} api={api}/>;
   return <><div className="profile-head"><Avatar name={p.name}/><div><h2><span className={p.hasDetections||(p.tsa?.packetModified||0)>0||p.tsa?.detections?.length||(p.ass?.detectedChecks||0)>0?'detected-name':''}>{p.name}</span> <span className={'pill '+(p.online?'online':'')}>{p.online?'● Online':'Offline'}</span></h2><div className="uuid">{p.uuid}</div></div>{moderate&&<div className="profile-actions"><button className="primary" disabled={!p.punish?.available} onClick={()=>open('punish')}>＋ Issue punishment</button></div>}</div>
-    <div className="detail-tabs">{allowed.map(([key,title])=><button key={key} data-tab={key} className={tab===key?'active':''} onClick={()=>setTab(key!)}>{title}</button>)}</div><div className="detail-body">{content}</div>
+    <ToggleSelector label="Player profile sections" variant="tabs" options={allowed.map(([key,title])=>({value:key!,label:title,icon:<TabIcon name={key as TabIconName}/>}))} value={tab!} onChange={setTab} dataAttribute="data-tab"/><div className="detail-body" ref={tabTransition}>{content}</div>
     {action&&<ActionDialog key={action.requestId} player={p} session={session} action={action} api={api} close={()=>setAction(null)} changed={changed}/>}</>;
 }
 function Storage({player,kind,api}:{player:Detail;kind:'inventory'|'enderChest'|'curios';api:Api}) {
@@ -52,10 +58,12 @@ function Storage({player,kind,api}:{player:Detail;kind:'inventory'|'enderChest'|
   if(!section?.available)return <p className="notice">{section?.reason||'Inventory data unavailable. Refresh to try again.'}</p>;
   return <><p className="notice">{snapshot?.source==='saved'?'Last saved data · '+date(snapshot.savedAt)+' · Player is offline':'Live snapshot · '+date(snapshot?.capturedAt)}. Read-only; refresh to see changes.</p>{error&&<p className="error" role="alert">{error}</p>}{section.groups?.length?section.groups.map((group,i)=><section className="storage-group" key={i}><h3>{group.name} <span className="pill">{group.slots.filter(s=>!s.empty).length} / {group.slots.length} occupied</span></h3><div className="storage-grid">{group.slots.map((s,i)=><Item key={i} slot={s} icon={icons[s.id]}/>)}</div></section>):<p className="empty">No Curios slots</p>}</>;
 }
-function Item({slot:s,icon}:{slot:Slot;icon?:string}) {
+export function Item({slot:s,icon}:{slot:Slot;icon?:string}) {
+  const [opened,setOpened]=useState<{slot:Slot;icon?:string}|null>(null);
   if(s.empty)return <div className="item-slot empty-slot" aria-label={s.label+': empty'}><small>{s.label}</small><span>Empty</span></div>;
-  return <details className={'item-slot '+(s.selected?'held-item':'')}><summary title={s.name+' · '+s.id}><small>{s.label}{s.selected?' · Selected':''}</small><span className="item-art">{icon&&/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(icon)?<img src={icon} alt=""/>:'◇'}</span><strong>{s.name}</strong><span className="item-count">×{s.count}</span></summary><div className="item-properties"><code>{s.id}</code>{s.maxDamage>0&&<p>Durability: {Math.max(0,s.maxDamage-s.damage)} / {s.maxDamage}</p>}{s.enchantments?.map((e,i)=><p className="enchantment" key={i}>{e}</p>)}{s.lore?.map((l,i)=><p key={i}>{l}</p>)}</div></details>;
+  return <><button type="button" className={'item-slot item-slot-button '+(s.selected?'held-item':'')} title={s.name+' · '+s.id} aria-label={'Inspect '+s.name+' in '+s.label} onClick={()=>setOpened({slot:s,icon})}><small>{s.label}{s.selected?' · Selected':''}</small><span className="item-art">{icon&&/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(icon)?<img src={icon} alt=""/>:'◇'}</span><strong>{s.name}</strong><span className="item-count">×{s.count}</span></button>{opened&&<ItemWindow slot={opened.slot} icon={opened.icon} close={()=>setOpened(null)}/>}</>;
 }
+
 function ActionDialog({player,session,action,api,close,changed}:{player:Detail;session:Session;action:Action;api:Api;close:()=>void;changed:()=>Promise<void>}) {
   const dialog=useRef<HTMLDialogElement>(null),punish=action.action==='punish',note=action.action.startsWith('note-'),removing=action.action==='note-remove';
   const offenses=player.punish?.offenses||[];
