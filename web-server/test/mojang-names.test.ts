@@ -95,3 +95,30 @@ test('account validation reuses an in-flight username lookup',async()=>{
  const lookup=names.resolve(id,null),validation=names.validate(id);finish(Response.json(profile));
  assert.equal(await lookup,'Notch');assert.equal(await validation,'valid');assert.equal(calls,1);
 });
+
+test('all player references share name resolution while mobs, items, Discord and historical text stay intact',async()=>{
+ let calls=0;const names=new MojangNames(async()=>{calls++;return Response.json(profile);});
+ await names.resolve(id,'CurrentName');
+ const member='00000000-0000-4000-8000-000000000002';await names.resolve(member,'TeamMember');
+ const input={uuid:id,name:id,identity:{name:id},ass:{playerName:id},clockin:{name:id},
+  teams:{name:'Builders',members:[{uuid:member,name:member}]},discord:{displayName:'Discord nickname'},notes:[{author:'Staff',authorUuid:member}],
+  entries:[{victim:{uuid:id,name:'OldName',player:true},killer:{uuid:member,name:member,player:true},directEntity:{uuid:id,name:'Zombie',player:false},message:'OldName was killed',weapon:{uuid:id,name:'Custom Blade'}}]};
+ const snapshot=names.snapshot(input),enriched=await names.enrich(input);
+ for(const result of [snapshot,enriched]){
+  assert.equal(result.name,'CurrentName');assert.equal(result.ass.playerName,'CurrentName');assert.equal(result.clockin.name,'CurrentName');
+  assert.equal(result.teams.members[0]!.name,'TeamMember');assert.equal(result.entries[0]!.victim.name,'CurrentName');assert.equal(result.entries[0]!.killer.name,'TeamMember');
+  assert.equal(result.entries[0]!.directEntity.name,'Zombie');assert.equal(result.entries[0]!.weapon.name,'Custom Blade');assert.equal(result.entries[0]!.message,'OldName was killed');
+  assert.equal(result.discord.displayName,'Discord nickname');assert.equal(result.notes[0]!.author,'Staff');
+ }
+ assert.equal(input.entries[0]!.victim.name,'OldName');assert.equal(calls,0);
+});
+
+test('historical kill-feed names do not renew the shared name cache expiry',async()=>{
+ let now=1,calls=0;
+ const names=new MojangNames(async()=>{calls++;return Response.json({...profile,name:calls===1?'FirstName':'UpdatedName'});},()=>now);
+ await names.resolve(id,null);
+ now+=WEEK_MS+1;
+ const history={victim:{uuid:id,name:'HistoricalName',player:true}};
+ assert.equal(names.snapshot(history).victim.name,'FirstName');
+ assert.equal((await names.enrich(history)).victim.name,'UpdatedName');assert.equal(calls,2);
+});

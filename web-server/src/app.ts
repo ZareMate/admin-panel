@@ -274,12 +274,12 @@ export async function createApp(config:Config, options:{bridge?:Bridge;fetcher?:
     const offset=Number(req.query.offset??0),limit=Number(req.query.limit??25),query=req.query.q??'';
     if(!Number.isSafeInteger(offset)||offset<0||!Number.isSafeInteger(limit)||limit<1||limit>50||query.length>128)throw new Failure(400,'Invalid kill-feed page');
     const data=await bridge.call('kill-feed',{actor:user,query,offset,limit}) as {entries:Record<string,unknown>[]};
-    return {...data,entries:data.entries.map(entry=>{const copy={...entry};delete copy.inventory;return copy;})};
+    return nameSnapshot({...data,entries:data.entries.map(entry=>{const copy={...entry};delete copy.inventory;return copy;})});
   });
   app.get<{Params:{id:string}}>('/api/kill-feed/:id',async req=>{
     const user=req.panelSession!.user;requirePermission(user,'tab.killFeed');
     const data=await bridge.call('kill-feed',{actor:user,entry:uuid(req.params.id)}) as Record<string,unknown>;
-    if(!has(user,'killFeed.inventory'))delete data.inventory;return data;
+    const copy={...data};if(!has(user,'killFeed.inventory'))delete copy.inventory;return nameSnapshot(copy);
   });
   app.get<{Querystring:{offline?:string}}>('/api/map/players',async req=>{
     requirePermission(req.panelSession!.user,'tab.map');

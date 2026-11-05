@@ -1,3 +1,4 @@
+import {playerIdentities,setPlayerName} from './player-identities.js';
 import {dirname,join} from 'node:path';
 import {PersistentCache,WEEK_MS,retryDelay,validRetry,type RetryState} from './persistent-cache.js';
 import {boundedBody} from './auth.js';
@@ -98,39 +99,27 @@ export class MojangNames {
   else if(account==='missing'&&this.valid.entries.delete(id))await this.valid.save();
   return result.name;
  }
+ private identityName(uuid:string,local:unknown,historical:boolean):unknown{
+  const cached=this.cache.get(uuid.toLowerCase())?.name;
+  return historical&&cached&&validSkinName(cached)?cached:local;
+ }
  snapshot<T>(input:T):T {
   const data=structuredClone(input);
-  const apply=(value:unknown)=>{
-   if(!value||typeof value!=='object')return;
-   const row=value as Record<string,unknown>;if(typeof row.uuid!=='string')return;
-   const local=row.name;
-   row.name=typeof local==='string'&&validSkinName(local)?local:this.cache.get(row.uuid.toLowerCase())?.name??row.uuid;
-   if(row.identity&&typeof row.identity==='object')(row.identity as Record<string,unknown>).name=row.name;
-   if(row.tsa&&typeof row.tsa==='object')(row.tsa as Record<string,unknown>).playerName=row.name;
-  };
-  if(data&&typeof data==='object'){
-   const root=data as Record<string,unknown>;
-   if(Array.isArray(root.players))root.players.forEach(apply);else apply(root);
+  for(const {row,uuid,historical} of playerIdentities(data)){
+   const local=this.identityName(uuid,row.name,historical);
+   setPlayerName(row,typeof local==='string'&&validSkinName(local)?local:this.cache.get(uuid.toLowerCase())?.name??uuid);
   }
   return data;
  }
  async enrich<T>(input:T):Promise<T> {
-  // Bridge snapshots can be reused by other requests; never mutate them.
-  const data=structuredClone(input);
-  const enrichPlayer=async(value:unknown)=>{
-   if(!value||typeof value!=='object')return;
-   const row=value as Record<string,unknown>;
-   if(typeof row.uuid!=='string')return;
-   row.name=await this.resolve(row.uuid,row.name);
-   if(row.identity&&typeof row.identity==='object')(row.identity as Record<string,unknown>).name=row.name;
-   if(row.tsa&&typeof row.tsa==='object')(row.tsa as Record<string,unknown>).playerName=row.name;
-  };
-  if(data&&typeof data==='object'){
-   const root=data as Record<string,unknown>;
-   if(Array.isArray(root.players)){
-    for(let offset=0;offset<root.players.length;offset+=20)await Promise.all(root.players.slice(offset,offset+20).map(enrichPlayer));
-   }
-   else await enrichPlayer(root);
+  const data=structuredClone(input),identities=playerIdentities(data);
+  for(let offset=0;offset<identities.length;offset+=20){
+   await Promise.all(identities.slice(offset,offset+20).map(async({row,uuid,historical})=>{
+    const cached=this.cache.get(uuid.toLowerCase())?.name;
+    const local=historical&&cached&&validSkinName(cached)?undefined:row.name;
+    const name=await this.resolve(uuid,local);
+    setPlayerName(row,name);
+   }));
   }
   return data;
  }

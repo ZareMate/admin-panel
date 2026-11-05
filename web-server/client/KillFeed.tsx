@@ -49,6 +49,7 @@ export function KillFeed({api,session}:{api:Api;session:Session}) {
   <div className="kill-feed-entries">{entries.map(death=><article className="card kill-feed-entry" key={death.id}>
    <button className="kill-feed-summary" aria-expanded={expanded===death.id} onClick={()=>setExpanded(old=>old===death.id?'':death.id)}>
     {death.killer?.player&&<Avatar name={death.killer.name} uuid={death.killer.uuid}/>}
+    {death.victim.player&&<Avatar name={death.victim.name} uuid={death.victim.uuid}/>}
     <span><strong>{death.killer?.name||'Environment'} → {death.victim.name}</strong><small>{death.cause}{!death.weapon.empty?' · '+death.weapon.name:''}</small><small>{date(death.at)}</small></span>
    </button>
    {expanded===death.id&&<DeathDetails key={death.id} id={death.id} api={api} canInventory={has(session,'killFeed.inventory')}/>}

@@ -14,10 +14,12 @@ import java.util.*;
 final class PanelData {
     private final ServerThread main;
     private final java.nio.file.Path profiles;
+    private final java.nio.file.Path playerDirectory;
     private final TsaReports tsaReports;
     private Map<UUID, String> names = Map.of();
     private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger("admin_panel");
-    PanelData(ServerThread main, java.nio.file.Path profiles, java.nio.file.Path tsaDirectory) {
+    PanelData(ServerThread main, java.nio.file.Path profiles, java.nio.file.Path tsaDirectory, java.nio.file.Path playerDirectory) {
+        this.playerDirectory = playerDirectory;
         this.main = main; this.profiles = profiles; this.tsaReports = new TsaReports(tsaDirectory);
     }
 
@@ -141,6 +143,8 @@ final class PanelData {
         live.forEach((id, name) -> { if (!name.equals(id.toString())) result.put(id, name); else result.putIfAbsent(id, name); });
         for (UUID id : reflectedUuids("com.zaremate.admin_notes.AdminNotesAPI", "getPlayers")) result.putIfAbsent(id, id.toString());
         for (UUID id : tsaRecords().keySet()) result.putIfAbsent(id, id.toString());
+        try { SavedPlayerIds.addTo(result, playerDirectory); }
+        catch (java.io.IOException error) { LOG.warn("Could not discover saved players in {}", playerDirectory, error); }
         return result;
     }
 

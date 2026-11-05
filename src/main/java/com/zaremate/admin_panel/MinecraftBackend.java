@@ -26,7 +26,7 @@ final class MinecraftBackend implements Backend {
         this.worldRoot = server.getWorldPath(LevelResource.ROOT);
         this.playerDirectory = server.getWorldPath(LevelResource.PLAYER_DATA_DIR);
         this.data = new PanelData(main, server.getServerDirectory().resolve("usercache.json"),
-                net.neoforged.fml.loading.FMLPaths.CONFIGDIR.get().resolve("tsa_anticheat"));
+                net.neoforged.fml.loading.FMLPaths.CONFIGDIR.get().resolve("tsa_anticheat"), playerDirectory);
     }
     private <T> T onServer(Callable<T> work) throws Exception { return main.call(work); }
     private void requireWorker() {
