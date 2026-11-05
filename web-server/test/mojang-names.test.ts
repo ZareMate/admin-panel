@@ -58,3 +58,40 @@ test('corrupt disk rows and invalid remote profiles are ignored',async()=>{
   const names=new MojangNames(async()=>Response.json({...profile,id:'wrong'}),Date.now,file);await names.init();assert.equal(await names.resolve(id,null),id);
  }finally{await rm(dir,{recursive:true,force:true});}
 });
+
+test('validated UUIDs persist separately and skip validation after name-cache expiry or removal',async()=>{
+ const dir=await mkdtemp(join(tmpdir(),'panel-valid-uuids-'));let calls=0,now=1;
+ const file=join(dir,'mojang-names.json');const fetcher:typeof fetch=async()=>{calls++;return Response.json(profile);};
+ try{
+  const names=new MojangNames(fetcher,()=>now,file);await names.init();
+  assert.deepEqual(await Promise.all([names.validate(id),names.validate(id)]),['valid','valid']);assert.equal(calls,1);
+  const {readFile}=await import('node:fs/promises');assert(JSON.parse(await readFile(join(dir,'valid-uuids.json'),'utf8')).some((row:unknown[])=>row[0]===id));
+  await rm(file);now+=WEEK_MS*2;
+  const restarted=new MojangNames(fetcher,()=>now,file);await restarted.init();assert.equal(await restarted.validate(id),'valid');assert.equal(calls,1);
+  assert.equal(await restarted.validate(id.replaceAll('-','')),'valid');assert.equal(calls,1);
+ }finally{await rm(dir,{recursive:true,force:true});}
+});
+test('web username cache seeds known UUIDs, but unresolved and confirmed-missing entries do not',async()=>{
+ const dir=await mkdtemp(join(tmpdir(),'panel-seed-uuids-'));let calls=0;
+ const file=join(dir,'mojang-names.json'),missing='00000000-0000-4000-8000-000000000002';
+ try{
+  await writeFile(file,JSON.stringify([[id,{name:'CachedName',expires:1,failures:0,retryAt:0}],[missing,{name:missing,expires:0,failures:0,retryAt:0}]]));
+  const names=new MojangNames(async()=>{calls++;return new Response(null,{status:204});},()=>2,file);await names.init();
+  assert.equal(await names.validate(id),'valid');assert.equal(calls,0);
+  assert.equal(await names.validate(missing),'missing');assert.equal(calls,1);
+  const restarted=new MojangNames(async()=>{throw new Error('Must use cached absence');},()=>60_003,file);await restarted.init();assert.equal(await restarted.validate(missing),'missing');
+  assert.equal(await restarted.resolve(missing,null),missing,'confirmed absence also suppresses background name requests');
+ }finally{await rm(dir,{recursive:true,force:true});}
+});
+test('validation distinguishes missing accounts from temporary failures and never trusts malformed profiles',async()=>{
+ for(const [status,body,expected] of [[404,'','missing'],[204,'','missing'],[429,'','unknown'],[503,'','unknown'],[200,'bad json','unknown'],[200,JSON.stringify({...profile,id:'wrong'}),'unknown']] as const){
+  let calls=0;const names=new MojangNames(async()=>{calls++;return new Response(status===204?null:body,{status});});
+  assert.equal(await names.validate(id),expected);assert.equal(await names.validate(id),expected);assert.equal(calls,1);
+ }
+});
+test('account validation reuses an in-flight username lookup',async()=>{
+ let finish!:(response:Response)=>void,calls=0;
+ const names=new MojangNames(async()=>{calls++;return new Promise(resolve=>{finish=resolve;});});
+ const lookup=names.resolve(id,null),validation=names.validate(id);finish(Response.json(profile));
+ assert.equal(await lookup,'Notch');assert.equal(await validation,'valid');assert.equal(calls,1);
+});

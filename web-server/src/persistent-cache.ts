@@ -16,6 +16,10 @@ export class PersistentCache<T> {
  private trim(){while(this.entries.size>10_000)this.entries.delete(this.entries.keys().next().value!);}
  async set(key:string,value:T){
   this.entries.delete(key);this.entries.set(key,value);this.trim();
+  await this.save();
+ }
+ async save(){
+  this.trim();
   if(!this.file)return;
   const file=this.file,snapshot=JSON.stringify([...this.entries]);
   const write=this.writing.catch(()=>{}).then(async()=>{

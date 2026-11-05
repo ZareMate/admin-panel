@@ -38,7 +38,7 @@ export async function createApp(config:Config, options:{bridge?:Bridge;fetcher?:
     nameJobs.add(job);
     return snapshot;
   };
-  const skins=new Skins(resolve(config.dataDir,'cache/skins/mineskin-v1'),options.fetcher);await skins.init();
+  const skins=new Skins(resolve(config.dataDir,'cache/skins/mineskin-v1'),options.fetcher,Date.now,mojangNames,fields=>app.log.warn(fields,'Skin image lookup failed'));await skins.init();
   const tickets=new Tickets(),ticketBridge=new TicketBridge(),todos=new Todos(resolve(config.dataDir,'todos.json'));await todos.load();
   const todoAssignees=new TodoAssignees(config,ticketBridge);
   const playerMap=new PlayerMap(resolve(config.dataDir,'map'));
@@ -47,7 +47,8 @@ export async function createApp(config:Config, options:{bridge?:Bridge;fetcher?:
   await app.register(cookie);
   await app.register(websocket,{options:{maxPayload:65536,perMessageDeflate:false}});
   const live=new Live(bridge,auth,mojangNames);
-  app.addHook('preClose',async()=>{playerMap.close();live.close();bridge.close();ticketBridge.close();await Promise.allSettled(nameJobs);});
+  app.addHook('preClose',async()=>{playerMap.close();live.close();bridge.close();ticketBridge.close();await skins.close();await Promise.allSettled(nameJobs);});
+  skins.startRetries();
   const sessionCookie={path:'/',httpOnly:true,sameSite:'strict' as const,secure:config.secure,maxAge:28800};
   const oauthCookie={path:'/api/auth/discord',httpOnly:true,sameSite:'lax' as const,secure:config.secure,maxAge:300};
   const publicRoutes=new Set(['/api/login','/api/auth/method','/api/auth/discord/start','/api/auth/discord/callback','/api/auth/minecraft/redeem']);
