@@ -66,6 +66,7 @@ export class Live {
       if(stopped){unlist();unstatus();}
     }catch(error){send({type:'live-error',error:error instanceof Error?error.message:'Live subscription unavailable'});socket.close(1013,'Live subscription unavailable');close();}
   }
+  permissionsChanged() {for(const [socket,client] of this.clients){socket.close(4002,'Permissions changed');client.close();}}
   revoke(token:string) {for(const [socket,client] of this.clients)if(client.token===token){socket.close(4001,'Session ended');client.close();}}
   close() {for(const [socket,client] of this.clients){socket.terminate();client.close();}}
 }

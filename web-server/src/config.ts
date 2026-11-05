@@ -92,4 +92,5 @@ export async function saveRanks(config: Config, value: unknown) {
   await mkdir(dirname(config.path),{recursive:true}); const temporary = `${config.path}.${token()}.tmp`;
   try { await writeFile(temporary,[...props].map(([k,v])=>`${escape(k)}=${escape(v)}`).join('\n')+'\n',{mode:0o600}); await rename(temporary,config.path); }
   finally { await unlink(temporary).catch(()=>{}); }
+  config.ranks=ranks;config.props=props;
 }

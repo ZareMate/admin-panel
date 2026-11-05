@@ -326,7 +326,7 @@ export async function createApp(config:Config, options:{bridge?:Bridge;fetcher?:
   app.get('/api/access/ranks',async req=>{manager(req);return {ranks:config.ranks};});
   app.post('/api/access/ranks',async req=>{
     manager(req);if(savingRanks)throw new Failure(409,'Rank configuration is being saved');savingRanks=true;
-    try {await saveRanks(config,object(req.body).ranks);await audit.write(req.panelSession!.user.name,'access-ranks-update','','success',{});return {restartRequired:true};}finally{savingRanks=false;}
+    try {await saveRanks(config,object(req.body).ranks);auth.reloadPermissions();live.permissionsChanged();await audit.write(req.panelSession!.user.name,'access-ranks-update','','success',{});return {restartRequired:false};}finally{savingRanks=false;}
   });
   app.post('/api/icons',async req=>{
     if(!has(req.panelSession!.user,'tab.killFeed')&&!['inventory','enderChest','curios'].some(k=>has(req.panelSession!.user,'tab.'+k)))throw new Failure(403,'Storage permission required');

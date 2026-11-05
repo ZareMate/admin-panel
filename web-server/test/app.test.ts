@@ -79,6 +79,16 @@ test('Discord OAuth state, rank precedence, login snapshot, local-login block, a
   assert.equal((await f.app.inject({method:'POST',url:'/api/access/ranks',headers:headers(f,staff),payload:{ranks:[{name:'mod',discordRoleId:'12345678901234570',access:'admin'}]}})).statusCode,400);
   assert.equal((await f.app.inject({method:'POST',url:'/api/access/ranks',headers:headers(f,staff),payload:{ranks:[{name:'owner',discordRoleId:'12345678901234569',access:'admin'}]}})).statusCode,200);
   const props=parseProperties(await readFile(f.config.path,'utf8'));assert.equal(props.get('discord.client-secret'),'test-secret');assert.equal(props.get('discord.rank-order'),'owner');
+  assert.equal(f.config.ranks.length,1,'saved ranks replace the running policy');
+  await connect(f,gameFixture().handler);
+  const live=new WebSocket(f.url.replace('http','ws')+'/api/live',{headers:headers(f,staff)});await once(live,'open');const closed=once(live,'close');
+  const applied=await f.app.inject({method:'POST',url:'/api/access/ranks',headers:headers(f,staff),payload:{ranks:[{name:'owner',discordRoleId:'12345678901234569',permissions:['panel.access','access.manage']}]}});
+  assert.equal(applied.json().restartRequired,false);
+  assert.equal((await closed)[0],4002,'old live subscriptions are closed on policy change');
+  const current=await f.app.inject({url:'/api/session',headers:headers(f,staff)});assert.deepEqual(current.json().permissions,['panel.access','access.manage']);
+  assert.equal((await f.app.inject({url:'/api/players',headers:headers(f,staff)})).statusCode,403,'existing sessions immediately lose removed grants');
+  assert.equal(calls,3,'policy reloads do not make extra Discord requests');
+
  }finally{await f.close();}
 });
 

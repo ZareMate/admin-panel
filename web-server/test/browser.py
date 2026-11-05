@@ -407,7 +407,7 @@ with tempfile.TemporaryDirectory(prefix='react-browser-') as profile:
             click('tbody tr:first-child input[data-permission="notes.edit"]')
             text_click('Save changes')
             command('/alert/accept',{})
-            wait("document.querySelector('.notice').textContent.includes('Saved. Restart')")
+            wait("document.querySelector('.notice').textContent.includes('Saved. Permissions applied')")
             checks+=1
             print(f'PASS: {checks} React rank permission editor checks.')
             raise SystemExit(0)

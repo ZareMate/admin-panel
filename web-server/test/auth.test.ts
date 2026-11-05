@@ -46,3 +46,16 @@ test('session permissions are immutable login snapshots and logout/expiration re
   for(let i=0;i<10;i++)f.auth.allowLogin('test-ip');assert.throws(()=>f.auth.allowLogin('test-ip'),/Too many login/);
  }finally{await f.close();}
 });
+
+test('live rank policy reloads re-evaluate verified role precedence, grants, revocations and access removal',async()=>{
+ const f=await fixture();try{
+  const user=f.config.users.get('admin')!;
+  const id=f.auth.create({...user,discordId:'12345678901234572',discordRoles:['12345678901234569','12345678901234570']});
+  const local=f.auth.create(user);
+  f.config.ranks=[{name:'mod',discordRoleId:'12345678901234570',permissions:['panel.access','tab.players']}];
+  f.auth.reloadPermissions();assert.equal(f.auth.get(id)!.user.rank,'mod');assert.deepEqual(f.auth.get(id)!.user.permissions,['panel.access','tab.players']);
+  f.config.ranks[0]!.permissions=['panel.access','tab.audit'];f.auth.reloadPermissions();assert.deepEqual(f.auth.get(id)!.user.permissions,['panel.access','tab.audit']);
+  assert.deepEqual(f.auth.get(local)!.user.permissions,user.permissions,'local account policy is unaffected by Discord rank edits');
+  f.config.ranks[0]!.permissions=[];f.auth.reloadPermissions();assert.equal(f.auth.get(id),undefined,'removing panel access revokes existing sessions');
+ }finally{await f.close();}
+});

@@ -41,7 +41,7 @@ export class MinecraftLogin {
    throw new Failure(403,'Your Discord roles do not grant panel access','login-rank-denied');
   }
   this.log('info','minecraft_login_authorized',{...context,rank:rank.name,permissionCount:rank.permissions.length,elapsedMs:this.now()-started});
-  return {name:`${text(member.username,100)} [${pending.discordId}]`,uuid:pending.minecraftUuid,discordId:pending.discordId,rank:rank.name,permissions:[...rank.permissions]};
+  return {name:`${text(member.username,100)} [${pending.discordId}]`,uuid:pending.minecraftUuid,discordId:pending.discordId,discordRoles:member.roles.filter((role):role is string=>typeof role==='string'),rank:rank.name,permissions:[...rank.permissions]};
   }catch(error){this.log('warn','minecraft_login_failed',{...context,stage,reason:error instanceof Failure?(error.code||'authorization-rejected'):'internal-error',status:error instanceof Failure?error.statusCode:500,elapsedMs:this.now()-started});throw error;}
  }
 }

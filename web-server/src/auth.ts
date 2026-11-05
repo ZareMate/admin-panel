@@ -31,9 +31,17 @@ export class Auth {
   create(user:User,expires=Date.now()+8*3600_000) {
     for(const [key,value] of this.sessions) if(value.expires<=Date.now()) this.sessions.delete(key);
     if(this.sessions.size>=1024) throw new Failure(503,'Session capacity reached');
-    const id=token(); this.sessions.set(id,{user:{...user,permissions:[...(user.permissions||[])]},csrf:token(),expires:Math.min(expires,Date.now()+8*3600_000)}); return id;
+    const id=token(); this.sessions.set(id,{user:{...user,permissions:[...(user.permissions||[])],discordRoles:user.discordRoles?[...user.discordRoles]:undefined},csrf:token(),expires:Math.min(expires,Date.now()+8*3600_000)}); return id;
   }
   get(id:string) { const s=this.sessions.get(id); if(s && s.expires<=Date.now()) {this.sessions.delete(id);return undefined;} return s; }
+  reloadPermissions() {
+    for(const [id,session] of this.sessions){
+      if(!session.user.discordId)continue;
+      const rank=this.config.ranks.find(rank=>session.user.discordRoles?.includes(rank.discordRoleId));
+      if(!rank||!has(rank,'panel.access')){this.sessions.delete(id);continue;}
+      session.user={...session.user,rank:rank.name,permissions:[...rank.permissions]};
+    }
+  }
   logout(id:string) {this.sessions.delete(id);}
   start() {
     for(const [key,value] of this.pending) if(value.expires<=Date.now()) this.pending.delete(key);
@@ -73,8 +81,8 @@ export class Auth {
     if(member.pending===true || !Array.isArray(member.roles) || (member.user && object(member.user).id!==id)) throw new Failure(403,'Discord membership could not be verified');
     const rank=this.config.ranks.find(r=>(member.roles as unknown[]).includes(r.discordRoleId));
     if(!rank || !has(rank,'panel.access')) throw new Failure(403,'Your Discord roles do not grant panel access');
-    const user:User={name:`${username} [${id}]`,discordId:id,permissions:[...rank.permissions],rank:rank.name,uuid:this.config.mappings.get(id)||discordUuid(id)};
-    // Authorization snapshot at login; tokens are discarded after the exchange.
+    const user:User={name:`${username} [${id}]`,discordId:id,discordRoles:member.roles.filter((role):role is string=>typeof role==='string'),permissions:[...rank.permissions],rank:rank.name,uuid:this.config.mappings.get(id)||discordUuid(id)};
+    // Retain verified role IDs for local rank-policy reloads; OAuth tokens are discarded.
     return {user,expires:Date.now()+Math.min(seconds,28800)*1000};
   }
 }

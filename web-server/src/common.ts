@@ -2,7 +2,7 @@ import { randomBytes, timingSafeEqual, createHash } from 'node:crypto';
 export class Failure extends Error {
   constructor(public statusCode: number, message: string, public code?:string) { super(message); }
 }
-export interface User { name: string; rank: string; uuid: string; discordId?: string; hash?: string; permissions?: string[] }
+export interface User { name: string; rank: string; uuid: string; discordId?: string; discordRoles?: string[]; hash?: string; permissions?: string[] }
 export const token = () => randomBytes(32).toString('base64url');
 export function equal(a: string, b: string) {
   const x = Buffer.from(a), y = Buffer.from(b);

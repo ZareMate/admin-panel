@@ -81,7 +81,7 @@ This example assumes HTTPS is already configured by your host; it does not issue
 - `ADMIN_PANEL_DISCORD_CLIENT_SECRET`: optional override for the Discord secret.
 - `TRUSTED_PROXIES`: optional comma-separated proxy IPs/CIDRs.
 
-Normal `npm start` loads `.env` if present. Hosting-provided environment variables take precedence. The secret never goes into the React bundle. Use the existing `tools/create-user.py` from the repository to generate local account entries. Rank changes from the UI update the configuration atomically and take effect after restarting Node.
+Normal `npm start` loads `.env` if present. Hosting-provided environment variables take precedence. The secret never goes into the React bundle. Use the existing `tools/create-user.py` from the repository to generate local account entries. Rank changes from the UI update the configuration atomically and apply immediately to signed-in Discord users.
 
 Bundled item exports live in `assets/icons/` and are copied to generated `public/icons/` during the web build. Optional additional exports go in `data/assets/icons/<namespace>__<item>.png`; copied mod jars go directly in `data/assets/` and are read only as asset archives. Restart Node after changing assets. Generated item textures, layered textures, and static cuboid models are previewed on the web host. Custom renderers, world tinting, and client-state-dependent items retain labeled fallbacks. Player list reads are coalesced and cached for two seconds; details stay viewer-specific for note ownership.
 
@@ -105,7 +105,7 @@ From the repository root, `docker build -f web-server/Dockerfile -t admin-panel-
 
 ## Permissions
 
-Ranks use `discord.rank.<name>.permissions`, a comma-separated list. The highest matching Discord rank wins; grants are not combined across ranks. Rank names do not grant permissions. Use **Rank access** to find permissions by feature group or search, save, and restart Node. The editor preserves one rank with both `panel.access` and `access.manage`. Authorization is captured at login; restarting Node clears existing sessions.
+Ranks use `discord.rank.<name>.permissions`, a comma-separated list. The highest matching Discord rank wins; grants are not combined across ranks. Rank names do not grant permissions. Use **Rank access** to find permissions by feature group or search, save, and apply changes immediately. The editor preserves one rank with both `panel.access` and `access.manage`. Verified Discord role IDs are retained at login; saving rank policies re-evaluates existing sessions against those roles, revokes removed grants, and disconnects old live subscriptions before reconnecting. Removing panel access signs the user out. Discord membership and role changes themselves are checked at the next login.
 
 | Permission | Allows |
 | --- | --- |
@@ -155,7 +155,7 @@ Grant `tab.tickets` in **Rank access**, plus each allowed category permission:
 - `tickets.player-report`
 - `tickets.report`
 
-Both grants are required. The API filters category labels and records before returning them; direct requests to forbidden categories return 403. Existing explicit ranks receive no new permissions automatically. As with other rank changes, restart the web service and sign in again to apply grants.
+Both grants are required. The API filters category labels and records before returning them; direct requests to forbidden categories return 403. Existing explicit ranks receive no new permissions automatically. Rank edits saved through the panel apply immediately.
 
 The Tickets inbox displays channel names, forum tags, and links to Discord, with 50 tickets per page and automatic refresh every 15 seconds. Discord still enforces channel access when opening those links. Ticket conversations support reading and replying; closing tickets is not implemented. See the bot README for source category IDs and name-pattern overrides. No received snapshot means a waiting notice; stale snapshots are visibly marked. Restarting the web service clears its in-memory snapshot until the next bot sync.
 
@@ -185,7 +185,7 @@ Grant `tab.suggestions` to read suggestions and `suggestions.tags` to apply/remo
 
 **Admin controls.** Three more permissions, granted in Rank access (legacy `admin` accounts get them automatically): `suggestions.status` changes a suggestion's status, `suggestions.create` posts a new suggestion, and `suggestions.delete` deletes a suggestion's thread. Statuses are fixed: Denied, Done, Under consideration, Maybe next season, Waiting for update, Testing, Poll. Posting and status edits go through the Discord webhook configured as `SUGGESTIONS_WEBHOOK_URL` in the bot's `.env` (a webhook of the suggestions forum channel). A status is stored as a final `**Status:** …` line of the suggestion's first message, which the bot edits through that webhook, so the Discord post always shows the current status. The webhook can only edit messages it posted: suggestions created from the panel work, but threads started by community members cannot get a status and the panel reports that. Status changes use a version check (a conflict asks you to refresh). Deleting removes the whole Discord thread and needs Manage Threads for the bot. All three actions are written to the audit log.
 
-“Create task” links a suggestion to the To-do board and requires both `tab.todo` and `todo.create`. Duplicate imports of the same suggestion are rejected. All new permissions appear in Rank access; existing explicit grants are unchanged. Restart both services after deploying, and restart the web service/sign in again after changing rank permissions.
+“Create task” links a suggestion to the To-do board and requires both `tab.todo` and `todo.create`. Duplicate imports of the same suggestion are rejected. All new permissions appear in Rank access; existing explicit grants are unchanged. Restart both services after deploying, and save rank permissions in Rank access to apply them immediately.
 
 Tasks can be dragged between status columns by users with `todo.edit`. A status dropdown on each card provides the same action for keyboard/touch users. Moves save immediately with the existing version check; failed moves keep the original position. Dragging is disabled while saving or editing a task.
 
