@@ -2,7 +2,8 @@ import {ToggleSelector} from './Selectors';
 import {useTabTransition} from './useTabTransition';
 import {TabIcon,type TabIconName} from './TabIcon';
 import {ItemWindow} from './ItemWindow';
-import {skinPath,validSkinName} from '../src/skin';
+import {useSkinImage} from './useSkinImage';
+import {validSkinIdentity} from '../src/skin';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Api, Session, Detail, Case, Slot } from './types';
 import { Avatar, date, Info, Pairs } from './App';
@@ -13,7 +14,7 @@ export interface Action {action:string;noteId?:string;caseId?:string;recordId?:n
 const makeAction=(action:string,fields:Partial<Action>={}):Action=>({action,...fields,requestId:Array.from(crypto.getRandomValues(new Uint8Array(32)),b=>b.toString(16).padStart(2,'0')).join('')});
 const status=(c:Case)=>c.removedBy?'removed':c.until&&c.until<=Date.now()?'expired':!c.active?c.replaced?'replaced':'inactive':['warn','kick'].includes(c.type)?'recorded':'current';
 const time=(seconds:number)=>{const m=Math.floor(Math.max(0,seconds)/60);return `${Math.floor(m/1440)}d ${Math.floor(m%1440/60)}h ${m%60}m`;};
-function Skin({name}:{name:string}){const [failed,setFailed]=useState(false);return failed||!validSkinName(name)?<p>Skin unavailable</p>:<img className="full-skin" src={skinPath('body',name)} alt={`${name}'s Minecraft skin`} loading="lazy" onError={()=>setFailed(true)}/>;}
+function Skin({name,uuid}:{name:string;uuid:string}){const {loaded,...image}=useSkinImage('body',uuid);return !validSkinIdentity(uuid)?<p>Skin unavailable</p>:<><img className="full-skin" {...image} alt={`${name}'s Minecraft skin`} loading="lazy"/>{!loaded&&<p>Loading skin…</p>}</>;}
 export function PlayerDetail({player:p,session,api,action,setAction,changed}:{player:Detail;session:Session;api:Api;action:Action|null;setAction:(a:Action|null)=>void;changed:()=>Promise<void>}) {
   const allowed=tabs.filter(([key])=>has(session,'tab.'+key));
   const [selectedTab,setTab]=useState(allowed[0]?.[0]||'none');const tab=allowed.some(([key])=>key===selectedTab)?selectedTab:allowed[0]?.[0]||'none';
@@ -26,7 +27,7 @@ export function PlayerDetail({player:p,session,api,action,setAction,changed}:{pl
       ['Time played',p.playtime?.available?time(p.playtime.seconds):'Unavailable'],
       ['Status',p.location?.available?(p.location.source==='live'?'Current location':'Last saved location'):'Unavailable'],
       ...(p.location?.available?[['Dimension',p.location.dimension],['X',Number(p.location.x).toFixed(1)],['Y',Number(p.location.y).toFixed(1)],['Z',Number(p.location.z).toFixed(1)],['Saved',date(p.location.savedAt)]] as [string,ReactNode][]:[])]}/></Info>
-    <Info title="Player skin"><Skin name={p.name}/></Info>
+    <Info title="Player skin"><Skin name={p.name} uuid={p.uuid}/></Info>
     {(has(session,'tab.cases')||has(session,'tab.notes'))&&<Info title="Moderation summary"><Pairs rows={[
       ...(has(session,'tab.cases')?[
         ['Current bans / mutes',(p.cases||[]).filter(c=>c.active&&(!c.until||c.until>Date.now())&&['ban','mute'].includes(c.type)).length],
@@ -45,7 +46,7 @@ export function PlayerDetail({player:p,session,api,action,setAction,changed}:{pl
     <Info title="Airport detection dates" wide><Pairs rows={Object.entries(p.ass?.detectionDates||{})}/></Info></div>;
   else if(tab==='none')content=<p>No profile tabs are permitted for your rank.</p>;
   else content=<Storage key={tab} player={p} kind={tab as 'inventory'|'enderChest'|'curios'} api={api}/>;
-  return <><div className="profile-head"><Avatar name={p.name}/><div><h2><span className={p.hasDetections||(p.tsa?.packetModified||0)>0||p.tsa?.detections?.length||(p.ass?.detectedChecks||0)>0?'detected-name':''}>{p.name}</span> <span className={'pill '+(p.online?'online':'')}>{p.online?'● Online':'Offline'}</span></h2><div className="uuid">{p.uuid}</div></div>{moderate&&<div className="profile-actions"><button className="primary" disabled={!p.punish?.available} onClick={()=>open('punish')}>＋ Issue punishment</button></div>}</div>
+  return <><div className="profile-head"><Avatar name={p.name} uuid={p.uuid}/><div><h2><span className={p.hasDetections||(p.tsa?.packetModified||0)>0||p.tsa?.detections?.length||(p.ass?.detectedChecks||0)>0?'detected-name':''}>{p.name}</span> <span className={'pill '+(p.online?'online':'')}>{p.online?'● Online':'Offline'}</span></h2><div className="uuid">{p.uuid}</div></div>{moderate&&<div className="profile-actions"><button className="primary" disabled={!p.punish?.available} onClick={()=>open('punish')}>＋ Issue punishment</button></div>}</div>
     <ToggleSelector label="Player profile sections" variant="tabs" options={allowed.map(([key,title])=>({value:key!,label:title,icon:<TabIcon name={key as TabIconName}/>}))} value={tab!} onChange={setTab} dataAttribute="data-tab"/><div className="detail-body" ref={tabTransition}>{content}</div>
     {action&&<ActionDialog key={action.requestId} player={p} session={session} action={action} api={api} close={()=>setAction(null)} changed={changed}/>}</>;
 }

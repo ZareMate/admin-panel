@@ -1,4 +1,4 @@
-import {skinPath,validSkinName,SKIN_CACHE_MS} from '../src/skin';
+import {skinPath,validSkinIdentity,SKIN_CACHE_MS} from '../src/skin';
 import {useEffect,useRef,useState} from 'react';
 
 /** A persistent queue avoids aborting all heads whenever map visibility changes. */
@@ -14,7 +14,7 @@ export class MapHeadLoader {
   private decode:(blob:Blob)=>Promise<ImageBitmap>=blob=>createImageBitmap(blob),
   private retryDelay=1000,private now=Date.now){}
  update(names:string[]) {
-  this.wanted=new Set(names.filter(name=>validSkinName(name)).slice(0,128));
+  this.wanted=new Set(names.filter(name=>validSkinIdentity(name)).slice(0,128));
   for(const name of this.failures.keys())if(!this.wanted.has(name))this.failures.delete(name);
   this.pump();
  }

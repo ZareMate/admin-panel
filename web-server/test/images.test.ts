@@ -37,17 +37,18 @@ test('production image resolver rejects cycles, custom renderers, traversal and 
  }finally{await rm(dir,{recursive:true,force:true});}
 });
 
-test('head proxy falls back on provider failures and deduplicates concurrent skin requests',async()=>{
+test('head and body proxy use mineskin.eu and deduplicate concurrent requests',async()=>{
  const dir=await mkdtemp(join(tmpdir(),'panel-head-fallback-'));try{
   const png=await sharp({create:{width:8,height:8,channels:4,background:'#4488cc'}}).png().toBuffer();
   const urls:string[]=[];
   const skins=new Skins(join(dir,'skins'),async input=>{
    const url=String(input);urls.push(url);
-   return url.startsWith('https://minotar.net/')?new Response('bad gateway',{status:502}):new Response(new Uint8Array(png));
+   return new Response(new Uint8Array(png));
   });
   const [first,second]=await Promise.all([skins.get('head','Explorer'),skins.get('head','explorer')]);
   assert.deepEqual(first.bytes,png);assert.deepEqual(second.bytes,png);
-  assert.equal(urls.length,2);assert(urls[0]!.startsWith('https://minotar.net/'));assert(urls[1]!.startsWith('https://mc-heads.net/'));
-  assert.deepEqual((await skins.get('head','Explorer')).bytes,png);assert.equal(urls.length,2);
+  assert.deepEqual(urls,['https://mineskin.eu/helm/Explorer/32.png']);
+  assert.deepEqual((await skins.get('head','Explorer')).bytes,png);assert.equal(urls.length,1);
+  await skins.get('body','Explorer');assert.equal(urls[1],'https://mineskin.eu/armor/body/Explorer/256.png');
  }finally{await rm(dir,{recursive:true,force:true});}
 });

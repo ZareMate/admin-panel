@@ -1,4 +1,5 @@
 import {TodoAssignees} from './todo-assignees.js';
+import { MojangNames } from './mojang-names.js';
 import { Skins } from './skins.js';
 import { PlayerMap, mapDimension } from './player-map.js';
 import { MinecraftLogin } from './minecraft-login.js';
@@ -29,7 +30,15 @@ export async function createApp(config:Config, options:{bridge?:Bridge;fetcher?:
   const auth=new Auth(config,options.fetcher),bridge=options.bridge||new Bridge(),audit=new Audit(resolve(config.dataDir,'logs/admin-panel-audit.jsonl'));
   await audit.load();
   const images=new Images(resolve(config.dataDir,'assets'),options.bundledDir||resolve('public'));await images.init();
-  const skins=new Skins(resolve(config.dataDir,'cache/skins'),options.fetcher);await skins.init();
+  const mojangNames=new MojangNames(options.fetcher,Date.now,resolve(config.dataDir,'cache/mojang-names.json'));await mojangNames.init();
+  const nameJobs=new Set<Promise<unknown>>();
+  const nameSnapshot=<T,>(data:T):T=>{
+    const snapshot=mojangNames.snapshot(data);
+    const job=mojangNames.enrich(data).catch(()=>app.log.warn('Background player name resolution unavailable')).finally(()=>nameJobs.delete(job));
+    nameJobs.add(job);
+    return snapshot;
+  };
+  const skins=new Skins(resolve(config.dataDir,'cache/skins/mineskin-v1'),options.fetcher);await skins.init();
   const tickets=new Tickets(),ticketBridge=new TicketBridge(),todos=new Todos(resolve(config.dataDir,'todos.json'));await todos.load();
   const todoAssignees=new TodoAssignees(config,ticketBridge);
   const playerMap=new PlayerMap(resolve(config.dataDir,'map'));
@@ -37,8 +46,8 @@ export async function createApp(config:Config, options:{bridge?:Bridge;fetcher?:
   const requests=new Map<string,number>();let savingRanks=false,iconJobs=0;
   await app.register(cookie);
   await app.register(websocket,{options:{maxPayload:65536,perMessageDeflate:false}});
-  const live=new Live(bridge,auth);
-  app.addHook('preClose',async()=>{playerMap.close();live.close();bridge.close();ticketBridge.close();});
+  const live=new Live(bridge,auth,mojangNames);
+  app.addHook('preClose',async()=>{playerMap.close();live.close();bridge.close();ticketBridge.close();await Promise.allSettled(nameJobs);});
   const sessionCookie={path:'/',httpOnly:true,sameSite:'strict' as const,secure:config.secure,maxAge:28800};
   const oauthCookie={path:'/api/auth/discord',httpOnly:true,sameSite:'lax' as const,secure:config.secure,maxAge:300};
   const publicRoutes=new Set(['/api/login','/api/auth/method','/api/auth/discord/start','/api/auth/discord/callback','/api/auth/minecraft/redeem']);
@@ -274,7 +283,7 @@ export async function createApp(config:Config, options:{bridge?:Bridge;fetcher?:
   app.get<{Querystring:{offline?:string}}>('/api/map/players',async req=>{
     requirePermission(req.panelSession!.user,'tab.map');
     if(req.query.offline!==undefined&&!['true','false'].includes(req.query.offline))throw new Failure(400,'Invalid offline player option');
-    return bridge.call('map-players',{includeOffline:req.query.offline==='true'});
+    return nameSnapshot(await bridge.call('map-players',{includeOffline:req.query.offline==='true'}));
   });
   app.get<{Querystring:{dimension?:string}}>('/api/map/claims',async req=>{requirePermission(req.panelSession!.user,'tab.map');return bridge.call('map-claims',{dimension:mapDimension(req.query.dimension||'minecraft:overworld')});});
   app.get<{Querystring:{dimension?:string}}>('/api/map/regions',async req=>{
@@ -305,8 +314,8 @@ export async function createApp(config:Config, options:{bridge?:Bridge;fetcher?:
     const staff=await todoAssignees.list(true),byId=new Map(staff.map(person=>[person.id,person.rank]));
     return {ranks:config.ranks.filter(rank=>has(rank,'panel.access')).map(rank=>rank.name),players:data.players.map(player=>({uuid:player.uuid,rank:player.discordId===undefined?undefined:byId.get(player.discordId)??null}))};
   });
-  app.get('/api/players',async req=>{requirePermission(req.panelSession!.user,'tab.players');return filterPlayers(await bridge.players(),req.panelSession!.user);});
-  app.get<{Params:{id:string}}>('/api/players/:id',async req=>{const user=req.panelSession!.user;requirePermission(user,'tab.players');return filterDetail(await bridge.player(uuid(req.params.id),user),user);});
+  app.get('/api/players',async req=>{requirePermission(req.panelSession!.user,'tab.players');return nameSnapshot(filterPlayers(await bridge.players(),req.panelSession!.user));});
+  app.get<{Params:{id:string}}>('/api/players/:id',async req=>{const user=req.panelSession!.user;requirePermission(user,'tab.players');return nameSnapshot(filterDetail(await bridge.player(uuid(req.params.id),user),user));});
   app.post<{Params:{id:string;action:string}}>('/api/players/:id/:action',async req=>{
     const id=uuid(req.params.id),{action}=req.params,{user,expires}=req.panelSession!,body=object(req.body);
     if(!['punish','revoke','remove-punishment','note-add','note-edit','note-remove'].includes(action))throw new Failure(404,'Not found');

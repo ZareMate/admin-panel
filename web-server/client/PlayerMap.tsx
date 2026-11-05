@@ -31,7 +31,7 @@ export function PlayerMap({api,session}:{api:Api;session:Session}) {
  const cache=useRef(new Map<string,HTMLImageElement>()),drag=useRef<{x:number;y:number;center:{x:number;z:number}}|null>(null);
  const shownPlayers=players.filter(player=>showOffline||player.online!==false);
  const visiblePlayers=shownPlayers.filter(player=>player.dimension===dimension);
- const headNames=visiblePlayers.filter(player=>Math.abs((player.x-center.x)*zoom)<size.width/2+40&&Math.abs((player.z-center.z)*zoom)<size.height/2+40).map(player=>player.name);
+ const headNames=visiblePlayers.filter(player=>Math.abs((player.x-center.x)*zoom)<size.width/2+40&&Math.abs((player.z-center.z)*zoom)<size.height/2+40).map(player=>player.uuid);
  const heads=useMapHeads(headNames);
  const claimCells=useMemo(()=>{
   const cells=new Map<string,{team:ClaimTeam;forceLoaded:boolean}>();
@@ -127,7 +127,7 @@ export function PlayerMap({api,session}:{api:Api;session:Session}) {
   for(const player of visiblePlayers){
    const point=screen(player.x,player.z);
    if(point.x<-40||point.y<-40||point.x>size.width+40||point.y>size.height+40)continue;
-   const image=heads.images.get(player.name),side=24,left=point.x-side/2,top=point.y-side/2;
+   const image=heads.images.get(player.uuid),side=24,left=point.x-side/2,top=point.y-side/2;
    if(image)context.drawImage(image,left,top,side,side);
    else{
     context.fillStyle='#b78c68';context.fillRect(left,top,side,side);

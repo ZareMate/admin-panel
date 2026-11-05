@@ -177,7 +177,7 @@ with tempfile.TemporaryDirectory(prefix='react-browser-') as profile:
             check("!document.querySelector('.map-player.active')",'center map stops following and returns from another dimension to world spawn')
             click('.map-player')
             wait("document.querySelector('#map-dimension').value==='minecraft:overworld' && document.querySelector('.map-toolbar').textContent.includes('X 96 · Z 48')")
-            wait("performance.getEntriesByType('resource').some(e=>e.name.includes('/api/skin/head/Explorer'))")
+            wait("performance.getEntriesByType('resource').some(e=>e.name.includes('/api/skin/head/00000000-0000-0000-0000-000000000001'))")
             wait("(()=>{const c=document.querySelector('.map-viewport canvas');const p=c.getContext('2d').getImageData(c.width/2,c.height/2,1,1).data;return p[0]===68&&p[1]===136&&p[2]===204;})()")
             check("(()=>{const c=document.querySelector('.map-viewport canvas'),r=window.devicePixelRatio||1;const p=c.getContext('2d').getImageData(c.width/2-14*r,c.height/2,1,1).data;return p[1]>p[0]&&p[1]>p[2];})()",'player head renders with a green online outline')
             text_click('Zoom in')

@@ -82,3 +82,54 @@ test('live streams redact denied tabs and audit-only users cannot subscribe to p
   assert(!audit.messages.some(m=>m.type==='players'||m.type==='player'));
  }finally{await f.close();}
 });
+
+test('initial live directory resolves UUIDs without selecting a player and reuses names for later pushes',async()=>{
+ let calls=0;
+ const f=await fixture({fetcher:async url=>{
+  calls++;assert.equal(String(url),'https://sessionserver.mojang.com/session/minecraft/profile/'+playerId.replaceAll('-',''));
+  return Response.json({id:playerId.replaceAll('-',''),name:'ResolvedPlayer'});
+ }});
+ try{
+  const game=gameFixture();game.players.players[0]!.name=playerId;game.detail.name=playerId;
+  await connect(f,game.handler);const staff=await login(f),client=await browser(f,staff);
+  await until(()=>client.messages.some(m=>m.type==='players'&&m.data.players[0].name==='ResolvedPlayer'));
+  assert.equal(client.messages.filter(m=>m.type==='players').at(-1).data.players[0].name,'ResolvedPlayer');
+  assert(!game.messages.some(m=>m.target==='player'),'no player click or detail subscription needed');
+  game.players.serverPlayers=2;game.publish();
+  await until(()=>client.messages.some(m=>m.type==='players'&&m.data.serverPlayers===2));
+  assert.equal(client.messages.filter(m=>m.type==='players').at(-1).data.players[0].name,'ResolvedPlayer');assert.equal(calls,1);
+  client.ws.send(JSON.stringify({type:'select',player:playerId}));await until(()=>client.messages.some(m=>m.type==='player'));
+  assert.equal(client.messages.find(m=>m.type==='player').data.name,'ResolvedPlayer');assert.equal(calls,1);
+  assert.equal(game.players.players[0]!.name,playerId,'raw bridge snapshot remains unchanged');
+ }finally{await f.close();}
+});
+
+test('delayed live lookups cannot overwrite a newer local name or snapshot',async()=>{
+ let finish!:(response:Response)=>void,started=false;
+ const f=await fixture({fetcher:async()=>{started=true;return new Promise(resolve=>{finish=resolve;});}});
+ try{
+  const game=gameFixture();game.players.players[0]!.name=playerId;
+  await connect(f,game.handler);const client=await browser(f,await login(f));await until(()=>started);
+  game.players.players[0]!.name='LocalName';game.players.serverPlayers=2;game.publish();
+  await until(()=>client.messages.some(m=>m.type==='players'&&m.data.serverPlayers===2));
+  finish(Response.json({id:playerId.replaceAll('-',''),name:'OldRemoteName'}));await delay(50);
+  const lists=client.messages.filter(m=>m.type==='players');
+  const newest=lists.findIndex(m=>m.data.serverPlayers===2);
+  assert(newest>=0);assert(lists.slice(newest).every(m=>m.data.serverPlayers===2&&m.data.players[0].name==='LocalName'));
+ }finally{await f.close();}
+});
+
+test('live and HTTP snapshots do not wait for Mojang before rendering UUID-based images',async()=>{
+ let finish!:(response:Response)=>void,started=false;
+ const f=await fixture({fetcher:async()=>{started=true;return new Promise(resolve=>{finish=resolve;});}});
+ try{
+  const game=gameFixture();game.players.players[0]!.name=playerId;
+  await connect(f,game.handler);const staff=await login(f),client=await browser(f,staff);
+  await until(()=>started&&client.messages.some(m=>m.type==='players'));
+  assert.equal(client.messages.find(m=>m.type==='players').data.players[0].uuid,playerId);
+  const response=await f.app.inject({url:'/api/players',headers:headers(f,staff)});
+  assert.equal(response.statusCode,200);assert.equal(response.json().players[0].uuid,playerId);
+  finish(Response.json({id:playerId.replaceAll('-',''),name:'ResolvedPlayer'}));
+  await until(()=>client.messages.some(m=>m.type==='players'&&m.data.players[0].name==='ResolvedPlayer'));
+ }finally{await f.close();}
+});

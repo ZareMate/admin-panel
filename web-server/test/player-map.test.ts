@@ -5,6 +5,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import sharp from 'sharp';
 import {zipSync} from 'fflate';
+import {SKIN_CACHE_MS} from '../src/skin.js';
 import {PlayerMap,mapRegion,mapDimension} from '../src/player-map.js';
 import {inspectRegionBuffer,writePng,readZipEntry,zipEntries} from '../src/ftb/codec.js';
 import {regionZip,cacheZip} from './map-fixtures.js';
@@ -67,7 +68,7 @@ test('map endpoints require independent view/upload/remove permissions, CSRF and
   assert.equal((await f.app.inject({url:'/api/map/players?offline=true',headers:headers(f,staff)})).statusCode,200);assert(operations.includes('map-players:offline'));
   assert.equal((await f.app.inject({url:'/api/map/players?offline=invalid',headers:headers(f,staff)})).statusCode,400);
   const headResponse=await f.app.inject({url:'/api/skin/head/Explorer',headers:headers(f,staff)});assert.equal(headResponse.statusCode,200);
-  const headAge=Number(/max-age=(\d+)/.exec(String(headResponse.headers['cache-control']))?.[1]);assert(headAge>0&&headAge<=7200);
+  const headAge=Number(/max-age=(\d+)/.exec(String(headResponse.headers['cache-control']))?.[1]);assert(headAge>0&&headAge<=SKIN_CACHE_MS/1000);
   assert.equal((await f.app.inject({url:'/api/skin/body/Explorer',headers:headers(f,staff)})).statusCode,403);
   assert.equal((await f.app.inject({url:'/api/players',headers:headers(f,staff)})).statusCode,403);
   assert.equal((await f.app.inject({url:'/api/map/claims?dimension=minecraft%3Athe_nether',headers:headers(f,staff)})).statusCode,200);assert(operations.includes('map-claims'));

@@ -40,7 +40,7 @@ test('transient head failures retry without requiring map movement or a reload',
  }finally{loader.dispose();}
 });
 
-test('map bitmap cache refreshes after the shared two-hour skin lifetime',async()=>{
+test('map bitmap cache refreshes after the shared seven-day skin lifetime',async()=>{
  const {SKIN_CACHE_MS}=await import('../src/skin.js');
  let now=Date.now(),calls=0,closed=0;const images=new Map<string,ImageBitmap>();
  const loader=new MapHeadLoader(images,()=>{},(async()=>{calls++;return new Response(new Uint8Array([1]));}) as typeof fetch,async()=>bitmap(()=>closed++),5,()=>now);
