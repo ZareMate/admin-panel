@@ -317,3 +317,12 @@ Unknown player UUIDs in player lists, details and offline map entries use a web-
 Heads and full-body renders both use mineskin.eu (`/helm/<name>/32.png` and `/armor/body/<name>/256.png`). The `mineskin-v1` cache directory and image URL version bypass previously cached images from mixed providers.
 
 Player directory/profile images, map heads and kill-feed player heads use UUIDs as mineskin.eu identities and cache keys, so name changes and Mojang lookup delays do not affect image loading.
+
+To migrate existing username-based PNG filenames to UUIDs using the saved username cache, run from the repository root:
+
+```sh
+python3 tools/rename-skin-cache.py --dry-run
+python3 tools/rename-skin-cache.py
+```
+
+Use `--names /path/to/mojang-names.json --skins /path/to/cache/skins` for another deployment. The script includes subdirectories, preserves image timestamps, and skips existing UUID targets, unknown names and names associated with multiple UUIDs. Files stay in their current provider directories. Stop the web server during migration so its in-memory cache cannot recreate the old filenames.
