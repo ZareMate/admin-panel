@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { Failure, type User } from './common.js';
 import { BatchReceiver } from './batches.js';
 import { gamePermissionsFor } from './permissions.js';
-interface Pending { resolve:(value:unknown)=>void; reject:(error:Error)=>void; timer:NodeJS.Timeout }
+interface Pending { resolve:(value:unknown)=>void; reject:(error:Error)=>void; timer:NodeJS.Timeout; operation:string; sentAt:number; deadline:number }
 export class Bridge {
   private peer?: WebSocket;
   private batches=new BatchReceiver();
@@ -61,6 +61,14 @@ export class Bridge {
         if (typeof message.id !== 'string') throw new Error('Missing request ID');
         const pending = this.pending.get(message.id); if (!pending) return;
         clearTimeout(pending.timer); this.pending.delete(message.id);
+        if (typeof message.error === 'string') {
+          const receivedAt=Date.now();
+          console.warn('[bridge] game request failed', {
+            operation:pending.operation, status:message.status, error:message.error,
+            roundTripMs:receivedAt-pending.sentAt,
+            deadlineRemainingMs:pending.deadline-receivedAt
+          });
+        }
         if (typeof message.error === 'string') pending.reject(new Failure(Number.isInteger(message.status) && Number(message.status)>=400 && Number(message.status)<=599 ? Number(message.status) : 502,message.error.slice(0,2000)));
         else if ('result' in message) pending.resolve(message.result);
         else pending.reject(new Failure(502,'Malformed game response'));
@@ -77,15 +85,18 @@ export class Bridge {
     if (!this.connected) return Promise.reject(this.offline());
     if (this.pending.size>=32) return Promise.reject(new Failure(503,'Minecraft bridge busy'));
     const id=randomUUID(), peer=this.peer!;
+    // Keep mutation deadlines unchanged: never allow moderation actions to execute unexpectedly late.
+    const timeoutMs=operation==='mutate'?this.timeout:60_000;
+    const sentAt=Date.now(), deadline=sentAt+(operation==='mutate'?Math.min(this.timeout,15_000):45_000);
     return new Promise((resolve,reject)=>{
-      const timer=setTimeout(()=>{ this.pending.delete(id); reject(new Failure(504,'Minecraft request timed out. Execution may have started; inspect player history and audit before retrying.')); },this.timeout);
-      this.pending.set(id,{resolve,reject,timer});
+      const timer=setTimeout(()=>{ this.pending.delete(id); console.warn('[bridge] request timed out', {operation,elapsedMs:Date.now()-sentAt,deadlineRemainingMs:deadline-Date.now()}); reject(new Failure(504,'Minecraft request timed out. Execution may have started; inspect player history and audit before retrying.')); },timeoutMs);
+      this.pending.set(id,{resolve,reject,timer,operation,sentAt,deadline});
       const actor=fields.actor as User|undefined;
       const gameFields=actor?{...fields,actor:{
         name:actor.name,uuid:actor.uuid,rank:actor.rank,
         permissions:gamePermissionsFor(operation,actor.permissions??[])
       }}:fields;
-      const message=JSON.stringify({version:1,id,deadline:Date.now()+Math.min(this.timeout,15_000),operation,...gameFields});
+      const message=JSON.stringify({version:1,id,deadline,operation,...gameFields});
       if (Buffer.byteLength(message)>65_536) { clearTimeout(timer); this.pending.delete(id); reject(new Failure(413,'Bridge request too large')); return; }
       peer.send(message,error=>{ if (error) { peer.terminate(); this.failAll(); } });
     });
