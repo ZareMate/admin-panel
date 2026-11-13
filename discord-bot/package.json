@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "discord.js": "14.27.0",
-    "ws": "^8.18.3"
+    "ws": "^8.23.0"
   },
   "devDependencies": {
     "@types/node": "24.10.0",

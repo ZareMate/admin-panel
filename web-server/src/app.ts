@@ -60,7 +60,9 @@ export async function createApp(config:Config, options:{bridge?:Bridge;fetcher?:
     if(config.secure)reply.header('Strict-Transport-Security','max-age=31536000');
     if(req.host.toLowerCase()!==new URL(config.origin).host.toLowerCase())throw new Failure(403,'Unrecognized host');
     if(!['GET','POST','HEAD'].includes(req.method))throw new Failure(405,'Method not allowed');
-    const path=req.url.split('?')[0]!;
+    // Authorize the route Fastify matched, including percent-encoded aliases.
+    // The raw URL can spell the same route differently and must not select its policy.
+    const path=req.routeOptions.url??req.url.split('?')[0]!;
     if(path==='/tickets-sync'||path==='/tickets-commands') {
       if(!config.ticketSyncToken||!equal(String(req.headers.authorization||''),'Bearer '+config.ticketSyncToken))throw new Failure(401,'Ticket sync authentication rejected');
       if(req.method!=='GET'||req.headers.upgrade?.toLowerCase()!=='websocket')throw new Failure(405,'WebSocket upgrade required');
@@ -90,7 +92,7 @@ export async function createApp(config:Config, options:{bridge?:Bridge;fetcher?:
   });
   app.setErrorHandler((error,req,reply)=>{
     const err=error as Error & {statusCode?:number};const status=err.statusCode&&err.statusCode>=400&&err.statusCode<=599?err.statusCode:500;
-    if(req.url.split('?')[0]?.startsWith('/api/auth/minecraft/'))req.log.warn({event:'minecraft_login_http_failed',requestId:req.id,status,reason:error instanceof Failure?(error.code||'request-rejected'):'internal-error'},'Minecraft login HTTP request failed');
+    if((req.routeOptions.url??req.url.split('?')[0])?.startsWith('/api/auth/minecraft/'))req.log.warn({event:'minecraft_login_http_failed',requestId:req.id,status,reason:error instanceof Failure?(error.code||'request-rejected'):'internal-error'},'Minecraft login HTTP request failed');
     if(status===500)req.log.error({name:err.name},'Request failed');
     reply.code(status).send({error:status===500?'Request failed. Check player history and audit before retrying.':err.message});
   });
