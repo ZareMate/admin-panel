@@ -1,3 +1,4 @@
+import { CloudflareDns } from './cloudflare-dns.js';
 import {TodoAssignees} from './todo-assignees.js';
 import { MojangNames } from './mojang-names.js';
 import { Skins } from './skins.js';
@@ -43,6 +44,7 @@ export async function createApp(config:Config, options:{bridge?:Bridge;fetcher?:
   const todoAssignees=new TodoAssignees(config,ticketBridge);
   const playerMap=new PlayerMap(resolve(config.dataDir,'map'));
   const minecraftLogin=new MinecraftLogin(config,ticketBridge,Date.now,(level,event,fields)=>app.log[level]({...fields,event},event));
+  const dns=new CloudflareDns(config.cloudflare||{},options.fetcher);
   const requests=new Map<string,number>();let savingRanks=false,iconJobs=0;
   await app.register(cookie);
   await app.register(websocket,{options:{maxPayload:65536,perMessageDeflate:false}});
@@ -91,6 +93,13 @@ export async function createApp(config:Config, options:{bridge?:Bridge;fetcher?:
     if(req.url.split('?')[0]?.startsWith('/api/auth/minecraft/'))req.log.warn({event:'minecraft_login_http_failed',requestId:req.id,status,reason:error instanceof Failure?(error.code||'request-rejected'):'internal-error'},'Minecraft login HTTP request failed');
     if(status===500)req.log.error({name:err.name},'Request failed');
     reply.code(status).send({error:status===500?'Request failed. Check player history and audit before retrying.':err.message});
+  });
+  app.get('/api/dns',async req=>{requirePermission(req.panelSession!.user,'tab.dns');return dns.list();});
+  app.post('/api/dns',async req=>{
+    const user=req.panelSession!.user;requirePermission(user,'tab.dns');requirePermission(user,'dns.edit');
+    await audit.write(user.name,'dns-update','','requested',{});
+    try {const result=await dns.updateAll(req.body);await audit.write(user.name,'dns-update','','success',result);return result;}
+    catch(error){await audit.write(user.name,'dns-update','','failed',{});throw error;}
   });
   app.get('/api/todos',async req=>{const user=req.panelSession!.user;requirePermission(user,'tab.todo');return {tasks:todos.list(),mine:todos.mine(user.discordId)};});
   app.get('/api/todos/mine',async req=>{const user=req.panelSession!.user;requirePermission(user,'tab.todo');return todos.mine(user.discordId);});
@@ -200,7 +209,7 @@ export async function createApp(config:Config, options:{bridge?:Bridge;fetcher?:
       }catch{socket.close(1008,'Invalid ticket batch');}
     });
   });
-  app.get('/api/tickets/counts',async req=>{const counts=tickets.list(req.panelSession!.user,undefined,0).counts;return {counts,total:Object.values(counts).reduce((sum,count)=>sum+count,0)};});
+  app.get('/api/tickets/counts',async req=>{const {counts,mentions,mentionTotal}=tickets.list(req.panelSession!.user,undefined,0);return {counts,mentions,mentionTotal,total:Object.values(counts).reduce((sum,count)=>sum+count,0)};});
   app.get<{Querystring:{category?:string;offset?:string}}>('/api/tickets',async req=>tickets.list(req.panelSession!.user,req.query.category,req.query.offset));
   app.get('/bridge',{websocket:true},socket=>bridge.attach(socket));
   app.get('/api/live',{websocket:true},(socket,req)=>live.attach(socket,req.cookies.panel_session||''));

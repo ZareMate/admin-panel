@@ -1,3 +1,4 @@
+import { DnsConfiguration } from './DnsConfiguration';
 import {calculateCheatStats,type CheatSnapshot} from './cheat-stats';
 import {useSlidingSelector} from './useSlidingSelector';
 import {ToggleSelector,SelectField} from './Selectors';
@@ -119,16 +120,18 @@ export function App() {
   useEffect(()=>{const socket=liveSocket.current;if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'select',player:view==='players'?selected:null}));},[selected,view]);
   const canKillFeed=has(session,'tab.killFeed');
   const canMap=has(session,'tab.map');
+  const canDns=has(session,'tab.dns');
   const canTsa=has(session,'tab.tsaConfig'),canStats=has(session,'tab.stats');
   const [myTodoCount,setMyTodoCount]=useState(0);
   const [ticketCount,setTicketCount]=useState(0);
+  const [ticketMentions,setTicketMentions]=useState(0);
   const [cheatPercentage,setCheatPercentage]=useState<number|null>(null);
   const canTodo=has(session,'tab.todo'),canSuggestions=has(session,'tab.suggestions');
   const canTickets=has(session,'tab.tickets');
   useEffect(()=>{
-    let active=true;setTicketCount(0);
+    let active=true;setTicketCount(0);setTicketMentions(0);
     if(!signedIn||!canTickets)return;
-    const load=()=>api<{total:number}>('/tickets/counts').then(result=>{if(active)setTicketCount(result.total);}).catch(()=>{if(active)setTicketCount(0);});
+    const load=()=>api<{total:number;mentionTotal?:number}>('/tickets/counts').then(result=>{if(active){setTicketCount(result.total);setTicketMentions(result.mentionTotal??0);}}).catch(()=>{if(active){setTicketCount(0);setTicketMentions(0);}});
     void load();const timer=setInterval(()=>{if(!document.hidden)void load();},15000);
     return()=>{active=false;clearInterval(timer);};
   },[signedIn,canTickets,api,session?.csrf]);
@@ -147,10 +150,10 @@ export function App() {
     void load();const timer=setInterval(()=>{if(!document.hidden)void load();},30000);
     return()=>{active=false;clearInterval(timer);};
   },[signedIn,canTodo,api,session?.csrf]);
-  useEffect(()=>{if(!signedIn)return;if(view==='killFeed'&&!canKillFeed||view==='map'&&!canMap||view==='stats'&&!canStats||view==='tsa'&&!canTsa||view==='todo'&&!canTodo||view==='suggestions'&&!canSuggestions||view==='tickets'&&!canTickets||view==='audit'&&!admin||view==='access'&&!manager||view==='players'&&!canPlayers){setView(canPlayers?'players':canTickets?'tickets':canTodo?'todo':canSuggestions?'suggestions':admin?'audit':manager?'access':canKillFeed?'killFeed':canMap?'map':canStats?'stats':canTsa?'tsa':'none');return;}
+  useEffect(()=>{if(!signedIn)return;if(view==='dns'&&!canDns||view==='killFeed'&&!canKillFeed||view==='map'&&!canMap||view==='stats'&&!canStats||view==='tsa'&&!canTsa||view==='todo'&&!canTodo||view==='suggestions'&&!canSuggestions||view==='tickets'&&!canTickets||view==='audit'&&!admin||view==='access'&&!manager||view==='players'&&!canPlayers){setView(canPlayers?'players':canTickets?'tickets':canTodo?'todo':canSuggestions?'suggestions':admin?'audit':manager?'access':canKillFeed?'killFeed':canMap?'map':canStats?'stats':canTsa?'tsa':canDns?'dns':'none');return;}
     if(view==='audit')void api<AuditRow[]>('/audit').then(setAudit).catch(e=>setError(e.message));
     if(view==='access')void api<{ranks:Rank[]}>('/access/ranks').then(r=>setRanks(r.ranks)).catch(e=>setError(e.message));
-  },[view,api,signedIn,admin,manager,canPlayers,canTickets,canTodo,canSuggestions,canTsa,canStats,canMap,canKillFeed]);
+  },[view,api,signedIn,admin,manager,canPlayers,canTickets,canTodo,canSuggestions,canTsa,canStats,canMap,canKillFeed,canDns]);
   if(!booted)return <div className="loading">Connecting to Admin Panel…</div>;
   if(!session)return <section id="login" className="login-screen"><div className="login-card"><div className="brand-mark">A</div><h1>Admin Panel</h1><p className="muted">Sign in to manage your Minecraft server.</p>
     {mode==='discord'?<a className="primary" id="discord-login" href="/api/auth/discord/start">Continue with Discord</a>:mode==='local'?<form id="login-form" onSubmit={async e=>{e.preventDefault();const data=Object.fromEntries(new FormData(e.currentTarget));setBusy(true);setLoginError('');try{await api('/login',data);setSession(await api<Session>('/session'));}catch(e){setLoginError((e as Error).message);}finally{setBusy(false);}}}>
@@ -167,18 +170,20 @@ export function App() {
     {canKillFeed&&<button id="kill-feed-nav" className={'nav-button '+(view==='killFeed'?'active':'')} title="Kill feed" aria-label="Kill feed" onClick={()=>changeView('killFeed')}><TabIcon name="killFeed"/><span className="nav-text">Kill feed</span></button>}
     {canMap&&<button id="map-nav" className={'nav-button '+(view==='map'?'active':'')} title="Player map" aria-label="Player map" onClick={()=>changeView('map')}><TabIcon name="map"/><span className="nav-text">Player map</span></button>}
     {canStats&&<button id="stats-nav" className={'nav-button '+(view==='stats'?'active':'')} title="Stats" aria-label="Stats" onClick={()=>changeView('stats')}><TabIcon name="stats"/><span className="nav-text">Stats</span>{cheatPercentage!==null&&<span className="count" title="Known players with recorded file detections · all categories">{Math.round(cheatPercentage)}%</span>}</button>}
-    {canTsa&&<button id="tsa-config-nav" className={'nav-button '+(view==='tsa'?'active':'')} title="TSA configuration" aria-label="TSA configuration" onClick={()=>changeView('tsa')}><TabIcon name="tsa"/><span className="nav-text">TSA configuration</span></button>}{canTickets&&<button id="tickets-nav" className={'nav-button '+(view==='tickets'?'active':'')} title="Tickets" aria-label="Tickets" onClick={()=>changeView('tickets')}><TabIcon name="tickets"/><span className="nav-text">Tickets</span>{ticketCount>0&&<span className="count" title="Tickets across your accessible categories">{ticketCount}</span>}</button>}
+    {canTsa&&<button id="tsa-config-nav" className={'nav-button '+(view==='tsa'?'active':'')} title="TSA configuration" aria-label="TSA configuration" onClick={()=>changeView('tsa')}><TabIcon name="tsa"/><span className="nav-text">TSA configuration</span></button>}{canTickets&&<button id="tickets-nav" className={'nav-button '+(view==='tickets'?'active ':'')+(ticketMentions?'ticket-personal-mention':'')} title={ticketMentions?`Tickets · ${ticketMentions} mention you`:'Tickets'} aria-label="Tickets" onClick={()=>changeView('tickets')}><TabIcon name="tickets"/><span className="nav-text">Tickets</span>{ticketCount>0&&<span className="count" title="Tickets across your accessible categories">{ticketCount}</span>}</button>}
     {canTodo&&<button id="todo-nav" className={'nav-button '+(view==='todo'?'active':'')} title="To-do" aria-label="To-do" onClick={()=>changeView('todo')}><TabIcon name="todo"/><span className="nav-text">To-do</span> <span className="count" title="Your To do and In progress tasks">{myTodoCount}</span></button>}
     {canSuggestions&&<button id="suggestions-nav" className={'nav-button '+(view==='suggestions'?'active':'')} title="Suggestions" aria-label="Suggestions" onClick={()=>changeView('suggestions')}><TabIcon name="suggestions"/><span className="nav-text">Suggestions</span></button>}
     {admin&&<button id="audit-nav" className={'nav-button '+(view==='audit'?'active':'')} title="Audit log" aria-label="Audit log" onClick={()=>changeView('audit')}><TabIcon name="audit"/><span className="nav-text">Audit log</span></button>}
     {manager&&<button id="access-nav" className={'nav-button '+(view==='access'?'active':'')} title="Rank access" aria-label="Rank access" onClick={()=>changeView('access')}><TabIcon name="access"/><span className="nav-text">Rank access</span></button>}
+    {canDns&&<button id="dns-nav" className={'nav-button '+(view==='dns'?'active':'')} title="Cloudflare DNS" aria-label="Cloudflare DNS" onClick={()=>changeView('dns')}><TabIcon name="tsa"/><span className="nav-text">Cloudflare DNS</span></button>}
   <span className="selector-highlight" aria-hidden="true" hidden/></nav><div className="sidebar-bottom"><div className="connection"><i className={connected?'':'stale'}/>{connected?'Server connected':'Server disconnected'}</div><div className="staff"><span className="avatar staff-avatar">{displayName(session.name).slice(0,2)}</span><div><strong title={session.name}>{displayName(session.name)}</strong><small>{session.rank}</small></div><button id="logout" className="icon-button" aria-label="Sign out" onClick={async()=>{try{await api('/logout',{});setSession(null);setDetail(null);setAction(null);setSelected(null);setFilter('all');setStaffFilter('all');setDetectionFilter('all');setPlayerRanks({ranks:[],players:[]});setQuery('');setView('players');setPlayers({players:[],serverPlayers:0,maxPlayers:0,punishAvailable:false});detailVersion.current++;}catch(e){report(e);}}}>↪</button></div></div></aside>
     <main><header className="topbar"><strong>Minecraft administration</strong><span>{updated?'Updated '+new Date(updated).toLocaleTimeString():'Waiting for server'}</span></header><div className="page" ref={pageTransition}>
-      <div className="page-heading"><div><h1>{view==='killFeed'?'Kill feed':view==='map'?'Player map':view==='stats'?'Cheat statistics':view==='tsa'?'TSA configuration':view==='players'?'Player directory':view==='audit'?'Audit log':view==='access'?'Discord rank access':view==='tickets'?'Tickets':view==='todo'?'Developer to-do':view==='suggestions'?'Suggestions':'Panel'}</h1><p className="muted">{view==='players'?'Online and known offline players':'Staff administration'}</p></div><button id="refresh" className="secondary" onClick={()=>{void refresh();if(view==='tsa'||view==='stats'||view==='map'||view==='killFeed')setTsaRefresh(value=>value+1);if(view==='audit')void api<AuditRow[]>('/audit').then(setAudit).catch(report);}}>Refresh</button></div>
+      <div className="page-heading"><div><h1>{view==='dns'?'Cloudflare DNS':view==='killFeed'?'Kill feed':view==='map'?'Player map':view==='stats'?'Cheat statistics':view==='tsa'?'TSA configuration':view==='players'?'Player directory':view==='audit'?'Audit log':view==='access'?'Discord rank access':view==='tickets'?'Tickets':view==='todo'?'Developer to-do':view==='suggestions'?'Suggestions':'Panel'}</h1><p className="muted">{view==='players'?'Online and known offline players':'Staff administration'}</p></div><button id="refresh" className="secondary" onClick={()=>{void refresh();if(view==='dns'||view==='tsa'||view==='stats'||view==='map'||view==='killFeed')setTsaRefresh(value=>value+1);if(view==='audit')void api<AuditRow[]>('/audit').then(setAudit).catch(report);}}>Refresh</button></div>
       {error&&<p id="page-error" className="banner error" role="alert">{error}</p>}
       {view==='killFeed'&&canKillFeed&&<KillFeed key={session.csrf+tsaRefresh} api={api} session={session}/>}
       {view==='map'&&canMap&&<PlayerMap key={session.csrf+tsaRefresh} api={api} session={session}/>}
       {view==='stats'&&canStats&&<CheatStatistics key={session.csrf+tsaRefresh} api={api}/>}
+      {view==='dns'&&canDns&&<DnsConfiguration key={session.csrf+tsaRefresh} api={api} canEdit={has(session,'dns.edit')}/>}
       {view==='tsa'&&canTsa&&<TsaConfiguration key={session.csrf+tsaRefresh} api={api} canEdit={has(session,'tsa.configure')} canEditLists={has(session,'tsa.lists.edit')}/>}
       {view==='tickets'&&canTickets&&<Tickets key={session.csrf} api={api} canReply={has(session,'tickets.reply')}/>}
       {view==='todo'&&canTodo&&<Todos api={api} session={session} onAssignedCount={setMyTodoCount}/>}

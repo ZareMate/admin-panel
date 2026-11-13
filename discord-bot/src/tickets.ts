@@ -4,7 +4,7 @@ export const TICKET_CATEGORIES = [{"id": "lost-items-or-airship", "label": "Lost
 
 export const UNCATEGORIZED_TICKET = {id:'uncategorized',label:'Uncategorized'} as const;
 
-export interface Ticket { id:string; name:string; category:string; guildId:string; tags:string[] }
+export interface Ticket { id:string; name:string; category:string; guildId:string; tags:string[]; mentionedUserIds?:string[] }
 export interface TicketConfig { suggestionsForumId?:string; suggestionsWebhookUrl?:string; categoryIds:string[]; rules:{id:string;label:string;pattern:string}[]; url?:string; token?:string }
 // A Discord webhook URL; the token is a secret and is never included in error messages.
 export const WEBHOOK_URL=/^https:\/\/(?:(?:ptb|canary)\.)?discord(?:app)?\.com\/api(?:\/v[0-9]+)?\/webhooks\/([0-9]{17,20})\/([A-Za-z0-9_-]{20,100})$/;
@@ -39,6 +39,33 @@ export function matches(name:string,pattern:string):boolean {
  // Only literal lowercase letters, digits and hyphens plus wildcard * are allowed.
  return new RegExp('^'+pattern.split('*').join('.*')+'$').test(name);
 }
+// Cache complete mention scans until messages change. Event invalidation also covers edits/deletes.
+const mentionCache=new Map<string,{lastId:string|null;users:string[]}>();
+const mentionScans=new Map<string,{dirty:boolean}>();
+export function invalidateTicketMentions(channelId:string){mentionCache.delete(channelId);const scan=mentionScans.get(channelId);if(scan)scan.dirty=true;}
+export async function ticketMentionUsers(channel:{id:string;lastMessageId?:string|null;messages?:{fetch:(options:{limit:number;before?:string;cache:boolean})=>Promise<any>}}):Promise<string[]> {
+ if(!channel.messages)return [];
+ const previous=mentionCache.get(channel.id),lastId=channel.lastMessageId??null;
+ if(previous&&previous.lastId===lastId)return previous.users;
+ const incremental=previous?.lastId&&lastId&&BigInt(lastId)>BigInt(previous.lastId)?previous:undefined;
+ const users=new Set<string>(incremental?.users);let before:string|undefined;
+ const scan={dirty:false};mentionScans.set(channel.id,scan);
+ try{for(;;){
+  const messages=await channel.messages.fetch({limit:100,cache:false,...(before?{before}:{})});
+  if(!messages.size)break;
+  let oldest:string|undefined,reachedPrevious=false;
+  for(const message of messages.values()){
+   if(incremental?.lastId&&BigInt(message.id)<=BigInt(incremental.lastId)){reachedPrevious=true;continue;}
+   // Discord's users collection excludes role and everyone mentions.
+   for(const user of message.mentions.users.values())if(/^[1-9][0-9]{16,19}$/.test(user.id))users.add(user.id);
+   if(!oldest||BigInt(message.id)<BigInt(oldest))oldest=message.id;
+  }
+  if(reachedPrevious||messages.size<100||!oldest||oldest===before)break;
+  before=oldest;
+ }
+ const result=[...users];if(!scan.dirty)mentionCache.set(channel.id,{lastId,users:result});return result;
+ }finally{mentionScans.delete(channel.id);}
+}
 export async function collectTickets(guild:Guild,config:TicketConfig):Promise<Ticket[]> {
  await guild.members.fetchMe();
  const channels=await guild.channels.fetch(),active=await guild.channels.fetchActiveThreads();
@@ -51,8 +78,10 @@ export async function collectTickets(guild:Guild,config:TicketConfig):Promise<Ti
   if(!source||!config.categoryIds.includes(source))continue;
   const rule=config.rules.find(r=>matches(c.name,r.pattern));
   const tags=c.isThread()&&parent?.type===ChannelType.GuildForum?c.appliedTags.map(id=>parent.availableTags.find(t=>t.id===id)?.name??id):[];
-  tickets.push({id:c.id,name:c.name,category:rule?.id??UNCATEGORIZED_TICKET.id,guildId:guild.id,tags});
+  const mentionedUserIds=await ticketMentionUsers(c);
+  tickets.push({...(mentionedUserIds.length?{mentionedUserIds}:{}),id:c.id,name:c.name,category:rule?.id??UNCATEGORIZED_TICKET.id,guildId:guild.id,tags});
  }
+ for(const id of mentionCache.keys())if(!all.has(id))mentionCache.delete(id);
  return tickets.sort((a,b)=>a.name.localeCompare(b.name)||a.id.localeCompare(b.id));
 }
 export async function publishTickets(config:TicketConfig,tickets:Ticket[],send?: (body:string)=>Promise<void>):Promise<void> {

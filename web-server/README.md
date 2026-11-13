@@ -340,3 +340,50 @@ The skin retry worker checks persisted failures on startup and once per second. 
 The directory, profile details, live snapshots, offline map entries, team-member identities, and kill-feed player references use the same UUID-to-name resolver. Kill-feed victims, killers and direct sources marked as players prefer the shared cached current name over a historical display name. Recorded death messages, non-player entities, item/NBT labels, note authors and Discord names stay intact. Directory/profile avatars, kill-feed player heads and map heads all request the same UUID-based image endpoint and share its persistent cache and retry worker.
 
 The mod's player directory includes canonical UUID `.dat` filenames from the world's `playerdata` directory, as well as online players, `usercache.json` and integration records. This keeps saved offline players discoverable after their local profile-cache entry is missing. Discovery reads filenames on the bridge worker without parsing NBT; the web server supplies missing usernames through the shared resolver. This directory-discovery fix requires updating the Minecraft mod.
+
+### Cloudflare DNS
+
+Set `CLOUDFLARE_ZONE_ID` (the zone containing your records) and
+`CLOUDFLARE_API_TOKEN` in the web server `.env`, then restart the web server.
+Use a Cloudflare API token scoped to that zone with Zone / DNS / Edit permission.
+The token stays on the server. Grant `tab.dns` to view the Cloudflare DNS tab and
+`dns.edit` to save changes through Rank access (or local `permissions.<username>`).
+Existing explicit rank grants are unchanged; legacy admin accounts receive both grants.
+
+Configure comma-separated full DNS names in `CLOUDFLARE_A_RECORDS` and
+`CLOUDFLARE_SRV_RECORDS`. There are no defaults. Empty variables configure no
+records of that type; if both are empty, the tab displays a configuration error.
+For example:
+
+```dotenv
+CLOUDFLARE_A_RECORDS=mc.create-craft.net
+CLOUDFLARE_SRV_RECORDS=mc.create-craft.net,_minecraft._tcp.mc.create-craft.net
+```
+
+The tab edits IPv4 addresses for configured A records and ports for configured
+SRV records. All names must belong to the configured Cloudflare zone.
+Restart the web server after changing these variables.
+Enter one `IPv4:port` value and choose **Save all records** to update all configured
+A addresses and SRV ports in a single Cloudflare batch request. Every record is
+checked before submitting the batch. Missing or duplicate records must be resolved
+in Cloudflare. SRV targets, priority, weight and TTL remain unchanged. Changes are
+audited, and a stale value requires reloading before saving. DNS cache propagation
+can delay the effect for players. Cloudflare request errors never expose the token
+or raw upstream response.
+
+### Personal ticket mentions
+
+Tickets that contain a direct mention of the signed-in staff member's Discord
+account sort first within their category, before pagination. A red outline marks
+the Tickets sidebar tab, each affected category selector, and the ticket rows;
+rows also show “Mentions you”. Role and everyone mentions do not count. Opening a
+ticket does not clear the highlight: removing or editing away all mentions does.
+Accounts without a linked Discord ID receive no personal mention highlights.
+
+Restart both the Discord bot and web server after deploying this feature. The bot
+needs View Channel and Read Message History for ticket channels. It scans the full
+accessible message history initially, caches unchanged channels, and checks newer
+messages incrementally. Edits and deletions invalidate that channel's cached scan.
+The existing 30-second bot sync and 15-second panel polling refresh the indicators;
+large initial history scans can take longer. Category permissions still control
+all counts, highlights, and ticket access.

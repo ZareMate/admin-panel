@@ -1,5 +1,5 @@
 // Shared with the React client. Authorization never derives from a rank name.
-export const PERMISSIONS = ['tab.killFeed', 'killFeed.inventory', 'tab.map', 'map.upload', 'map.remove', 'tab.stats', 'tsa.lists.edit', 'tab.tsaConfig', 'tsa.configure', 'suggestions.reply', 'tab.todo', 'todo.create', 'todo.edit', 'todo.delete', 'tab.suggestions', 'suggestions.tags', 'suggestions.status', 'suggestions.create', 'suggestions.delete', 'tickets.reply', 'tab.tickets', 'tickets.lost-items-or-airship', 'tickets.other-support', 'tickets.cant-connect-to-the-server', 'tickets.buy-a-shop-plot-at-spawn', 'tickets.stealing-or-grieffing', 'tickets.player-report', 'tickets.report', 'tickets.uncategorized', 'panel.access', 'tab.players', 'tab.overview', 'tab.cases', 'tab.notes', 'tab.security', 'tab.inventory', 'tab.enderChest', 'tab.curios', 'tab.audit', 'access.manage', 'notes.add', 'notes.edit', 'notes.remove', 'punish.warn', 'punish.kick', 'punish.mute', 'punish.ban', 'punish.offense', 'punish.remove', 'punish.revoke'] as const;
+export const PERMISSIONS = ['tab.dns', 'dns.edit', 'tab.killFeed', 'killFeed.inventory', 'tab.map', 'map.upload', 'map.remove', 'tab.stats', 'tsa.lists.edit', 'tab.tsaConfig', 'tsa.configure', 'suggestions.reply', 'tab.todo', 'todo.create', 'todo.edit', 'todo.delete', 'tab.suggestions', 'suggestions.tags', 'suggestions.status', 'suggestions.create', 'suggestions.delete', 'tickets.reply', 'tab.tickets', 'tickets.lost-items-or-airship', 'tickets.other-support', 'tickets.cant-connect-to-the-server', 'tickets.buy-a-shop-plot-at-spawn', 'tickets.stealing-or-grieffing', 'tickets.player-report', 'tickets.report', 'tickets.uncategorized', 'panel.access', 'tab.players', 'tab.overview', 'tab.cases', 'tab.notes', 'tab.security', 'tab.inventory', 'tab.enderChest', 'tab.curios', 'tab.audit', 'access.manage', 'notes.add', 'notes.edit', 'notes.remove', 'punish.warn', 'punish.kick', 'punish.mute', 'punish.ban', 'punish.offense', 'punish.remove', 'punish.revoke'] as const;
 export type Permission = typeof PERMISSIONS[number];
 // Only grants enforced inside Minecraft cross the game bridge. Web-owned grants
 // stay in the session and are checked by the Node routes.
@@ -22,7 +22,7 @@ export function gamePermissionsFor(operation:string,permissions:readonly string[
 export const has = (user:{permissions?:readonly string[]}|null|undefined, permission:string) => !!user?.permissions?.includes(permission);
 export function legacyPermissions(role:string, rank=role):string[] {
   if(role==='deny')return [];
-  const read=PERMISSIONS.filter(p=>p==='panel.access'||p.startsWith('tab.')&&p!=='tab.tsaConfig'&&p!=='tab.audit'&&p!=='tab.tickets'&&p!=='tab.todo'&&p!=='tab.suggestions');
+  const read=PERMISSIONS.filter(p=>p==='panel.access'||p.startsWith('tab.')&&p!=='tab.dns'&&p!=='tab.tsaConfig'&&p!=='tab.audit'&&p!=='tab.tickets'&&p!=='tab.todo'&&p!=='tab.suggestions');
   if(role==='viewer')return [...read];
   if(role==='moderator')return [...read,'notes.add','notes.edit','notes.remove','punish.warn','punish.kick','punish.mute'];
   if(role==='admin')return PERMISSIONS.filter(p=>p!=='access.manage'||['owner','dev'].includes(rank));
@@ -47,6 +47,8 @@ export function filterPlayers(value:unknown,user:{permissions?:readonly string[]
 }
 
 export const PERMISSION_LABELS:Record<Permission,string>={
+ 'tab.dns':'Cloudflare DNS tab',
+ 'dns.edit':'Change Minecraft DNS IP and ports',
  'tab.killFeed':'Kill feed tab',
  'killFeed.inventory':'View victim inventory at death',
  'tab.map':'Player map tab',
@@ -91,6 +93,7 @@ export const PERMISSION_GROUPS: {id:string; title:string; hint:string; keys:read
   {id:'workspace',title:'Workspace',hint:'Sign in is required for every tab. Rank management is separate from audit access.',keys:['panel.access','tab.players','tab.killFeed','killFeed.inventory','tab.map','map.upload','map.remove','tab.stats','tab.audit','access.manage']},
   {id:'player-data',title:'Player records',hint:'Profile tabs also require the Players tab.',keys:['tab.overview','tab.cases','tab.notes','tab.security','tab.inventory','tab.enderChest','tab.curios']},
   {id:'moderation',title:'Notes & moderation',hint:'Actions also require their matching Staff notes or Punishments tab.',keys:['notes.add','notes.edit','notes.remove','punish.warn','punish.kick','punish.mute','punish.ban','punish.offense','punish.remove','punish.revoke']},
+  {id:'dns',title:'Cloudflare DNS',hint:'Editing IP and ports also requires the DNS tab.',keys:['tab.dns','dns.edit']},
   {id:'tsa',title:'TSA',hint:'Editing settings or lists also requires the TSA configuration tab.',keys:['tab.tsaConfig','tsa.configure','tsa.lists.edit']},
   {id:'tickets',title:'Tickets',hint:'Reading requires the Tickets tab and each allowed category. Reply also requires the reply grant.',keys:['tab.tickets','tickets.reply','tickets.lost-items-or-airship','tickets.other-support','tickets.cant-connect-to-the-server','tickets.buy-a-shop-plot-at-spawn','tickets.stealing-or-grieffing','tickets.player-report','tickets.report','tickets.uncategorized']},
   {id:'suggestions',title:'Suggestions',hint:'Tag changes and replies also require the Suggestions tab.',keys:['tab.suggestions','suggestions.tags','suggestions.status','suggestions.create','suggestions.delete','suggestions.reply']},

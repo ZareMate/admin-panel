@@ -1,8 +1,8 @@
 import { buildSuggestionIndex, indexSuggestionMessage, invalidateSuggestionThread, removeSuggestionThread, invalidateSuggestionStatus } from './suggestions.js';
 import { errorDetail } from './errors.js';
 import { connectConversations } from './conversations.js';
-import { Client, Events, GatewayIntentBits } from 'discord.js';
-import { ticketConfig, collectTickets, publishTickets } from './tickets.js';
+import { Client, Events, GatewayIntentBits, Partials } from 'discord.js';
+import { ticketConfig, collectTickets, publishTickets, invalidateTicketMentions } from './tickets.js';
 import { loadConfig } from './config.js';
 import { printGuildChannels } from './channels.js';
 
@@ -15,7 +15,7 @@ function report(stage:string,error:unknown) {
 try {
   const config=loadConfig(),tickets=ticketConfig();
   console.info("Discord guild configuration",{messagingGuild:config.guildId,authGuild:config.authGuildId});
-  client=new Client({intents:[GatewayIntentBits.Guilds,...(tickets.url?[GatewayIntentBits.GuildMessages,GatewayIntentBits.MessageContent]:[])],presence:{status:'online'},allowedMentions:{parse:[]}});
+  client=new Client({partials:[Partials.Message],intents:[GatewayIntentBits.Guilds,...(tickets.url?[GatewayIntentBits.GuildMessages,GatewayIntentBits.MessageContent]:[])],presence:{status:'online'},allowedMentions:{parse:[]}});
   client.once(Events.ClientReady,ready=>{
     console.log(`Online as ${JSON.stringify(ready.user.tag)} (${ready.user.id}).`);
     void (async()=>{
@@ -35,16 +35,19 @@ try {
   });
   client.on(Events.MessageCreate,message=>{if(message.guild)indexSuggestionMessage(message.guild,tickets,message);});
   client.on(Events.MessageUpdate,(_old,message)=>{
+    invalidateTicketMentions(message.channelId);
     // A forum post's first message shares its thread's ID; its edits may change the displayed status.
     if(message.channelId===message.id)invalidateSuggestionStatus(message.id);
     if(message.guild&&message.channel.isThread()&&message.channel.parentId===tickets.suggestionsForumId)
       invalidateSuggestionThread(message.guild,tickets,message.channel);
   });
   client.on(Events.MessageDelete,message=>{
+    invalidateTicketMentions(message.channelId);
     if(message.guild&&message.channel.isThread()&&message.channel.parentId===tickets.suggestionsForumId)
       invalidateSuggestionThread(message.guild,tickets,message.channel);
   });
   client.on(Events.MessageBulkDelete,(_messages,channel)=>{
+    invalidateTicketMentions(channel.id);
     if(channel.isThread()&&channel.guild&&channel.parentId===tickets.suggestionsForumId)
       invalidateSuggestionThread(channel.guild,tickets,channel);
   });

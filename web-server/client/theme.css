@@ -525,3 +525,46 @@ tbody tr:hover { background: rgba(185, 232, 132, .035); }
 }
 
 .ticket-category-selector .ticket-category-count { margin-left: 2px; font-size: 10px; padding: 1px 5px; line-height: 1.4; }
+
+/* Cloudflare DNS */
+.dns-configuration { overflow: hidden; }
+.dns-header { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 20px; border-bottom: 1px solid var(--line); }
+.dns-header h2 { margin: 0 0 6px; }
+.dns-header p { margin: 0; font-size: 12px; }
+.dns-header button { flex-shrink: 0; }
+.dns-editor { padding: 20px; }
+.dns-form { display: grid; gap: 10px; max-width: 800px; }
+.dns-form label { font-size: 12px; font-weight: 600; }
+.dns-input-row { display: flex; align-items: stretch; gap: 12px; }
+.dns-input-row input { flex: 1; min-width: 0; width: 100%; font-family: ui-monospace, monospace; }
+.dns-input-row .primary { flex-shrink: 0; width: auto; margin: 0; }
+.dns-form p { margin: 0; font-size: 12px; }
+.dns-notice { color: var(--green); margin: 0 0 16px; }
+.dns-records { padding: 20px; border-top: 1px solid var(--line); }
+.dns-records h3 { margin: 0 0 16px; font-size: 12px; }
+.dns-record { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; gap: 16px; padding: 16px 0; border-top: 1px solid var(--line); }
+.dns-record-name { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.dns-record-name strong { font-size: 12px; overflow-wrap: anywhere; }
+.dns-record-type { flex-shrink: 0; min-width: 40px; padding: 3px 7px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel2); color: var(--accent); text-align: center; font-size: 10px; font-weight: 600; }
+.dns-record-values { display: flex; flex-wrap: wrap; gap: 12px 28px; margin: 0; }
+.dns-record-values div { min-width: 0; }
+.dns-record-values dt { color: var(--muted); font-size: 10px; }
+.dns-record-values dd { margin: 3px 0 0; font-size: 12px; font-family: ui-monospace, monospace; overflow-wrap: anywhere; }
+.dns-record>.error { margin: 0; font-size: 12px; overflow-wrap: anywhere; }
+@media (max-width: 700px) {
+ .dns-header { align-items: flex-start; flex-direction: column; gap: 12px; }
+ .dns-header, .dns-editor, .dns-records { padding: 16px; }
+ .dns-input-row { flex-direction: column; }
+ .dns-input-row .primary { align-self: flex-start; }
+ .dns-record { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+}
+
+/* A direct Discord mention remains visible until the mention is removed. */
+#tickets-nav.ticket-personal-mention,
+.ticket-category-selector button.ticket-personal-mention,
+.ticket-list-row.ticket-personal-mention {
+ outline: 1px solid var(--red);
+ outline-offset: -1px;
+ border-radius: 7px;
+}
+.ticket-mention-label { display: inline-block; margin-left: 8px; color: var(--red); font-size: 10px; font-weight: 600; }

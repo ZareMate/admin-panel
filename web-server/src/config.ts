@@ -1,3 +1,4 @@
+import { dnsRecordsFromEnv, type DnsRecordSpec } from './cloudflare-dns.js';
 import { readFile, mkdir, writeFile, rename, unlink } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { Failure, type User, text, uuid, token } from './common.js';
@@ -8,6 +9,7 @@ export function permissions(value:unknown):string[] {
 }
 export interface Rank { name: string; discordRoleId: string; permissions:string[] }
 export interface Config {
+  cloudflare?:{apiToken?:string;zoneId?:string;records?:DnsRecordSpec[]};
   ticketSyncToken?:string;
   origin: string; bind: string; port: number; secure: boolean; bridgeToken: string;
   mode: 'local' | 'discord'; users: Map<string, User>; ranks: Rank[];
@@ -79,7 +81,7 @@ export async function loadConfig(env = process.env): Promise<Config> {
     snowflake(clientId); snowflake(guildId); if (!clientSecret) throw new Error('Discord client secret required');
     ranks = validateRanks((props.get('discord.rank-order') || '').split(',').map(name => ({name:name.trim(),discordRoleId:props.get(`discord.rank.${name.trim()}.role-id`),access:props.get(`discord.rank.${name.trim()}.access`),permissions:props.has(`discord.rank.${name.trim()}.permissions`)?props.get(`discord.rank.${name.trim()}.permissions`)!.split(',').map(s=>s.trim()).filter(Boolean):undefined})),false);
   } else if (!users.size) throw new Error('At least one local staff account is required');
-  return {ticketSyncToken,origin,bind:env.HOST || props.get('bind') || '0.0.0.0',port,secure:url.protocol==='https:',bridgeToken,mode,users,ranks,clientId,clientSecret,guildId,mappings,path,dataDir,props,
+  return {cloudflare:{records:dnsRecordsFromEnv(env),apiToken:env.CLOUDFLARE_API_TOKEN?.trim(),zoneId:env.CLOUDFLARE_ZONE_ID?.trim()},ticketSyncToken,origin,bind:env.HOST || props.get('bind') || '0.0.0.0',port,secure:url.protocol==='https:',bridgeToken,mode,users,ranks,clientId,clientSecret,guildId,mappings,path,dataDir,props,
     trustedProxies:(env.TRUSTED_PROXIES || '').split(',').map(s=>s.trim()).filter(Boolean)};
 }
 export async function saveRanks(config: Config, value: unknown) {

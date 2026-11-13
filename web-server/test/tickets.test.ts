@@ -77,3 +77,32 @@ test('conversation API enforces category and reply grants, CSRF, duplicate preve
   assert(f.audit.recent().some(r=>r.action==='ticket-reply'&&r.state==='success'));
  }finally{bot?.terminate();await f.close();}
 });
+
+test('personal mentions sort before pagination, stay highlighted, and never expose other users or forbidden categories',()=>{
+ const store=new Tickets(),me='22345678901234567',other='22345678901234568';
+ const rows=Array.from({length:60},(_,i)=>({...row,id:String(32345678901234567n+BigInt(i)),name:`ticket-${i}`,mentionedUserIds:i===59?[me]:[other]}));
+ store.accept(batch([...rows,{...row,id:'42345678901234567',category:'report',mentionedUserIds:[me]}]));
+ const staff={...user,discordId:me},result=store.list(staff,undefined,0);
+ assert.equal(result.tickets[0]!.id,rows[59]!.id);assert.equal((result.tickets[0] as any).mentioned,true);
+ assert.equal((result.tickets[1] as any).mentioned,false);assert.equal(result.mentionTotal,1);
+ assert.deepEqual(result.mentions,{'lost-items-or-airship':1});
+ assert(!JSON.stringify(result).includes('mentionedUserIds'));assert(!JSON.stringify(result).includes(other));
+ assert.equal(store.list(staff,undefined,0).mentionTotal,1); // Reading does not acknowledge mentions.
+ assert.equal(store.list(user,undefined,0).mentionTotal,0);
+ assert.equal(store.list({...user,discordId:other},undefined,0).mentionTotal,59);
+ store.accept(batch(rows.map(t=>({...t,mentionedUserIds:[]}))));assert.equal(store.list(staff,undefined,0).mentionTotal,0);
+ assert.throws(()=>store.accept(batch([{...row,mentionedUserIds:['@everyone']}])),/Invalid ticket mentions/);
+});
+
+test('ticket mention counts use the authenticated Discord identity and category grants',async()=>{
+ const f=await fixture();try{
+  f.config.ticketSyncToken='a'.repeat(43);const me='22345678901234567';
+  Object.assign(f.config.users.get('admin')!,{discordId:me,permissions:['panel.access',...user.permissions]});
+  await ticketPush(f,batch([{...row,mentionedUserIds:[me]},{...row,id:'42345678901234567',category:'report',mentionedUserIds:[me]}]));
+  const staff=await login(f);
+  const counts=(await f.app.inject({url:'/api/tickets/counts',headers:headers(f,staff)})).json();
+  assert.equal(counts.mentionTotal,1);assert.deepEqual(counts.mentions,{'lost-items-or-airship':1});
+  const list=(await f.app.inject({url:'/api/tickets',headers:headers(f,staff)})).json();
+  assert.equal(list.tickets[0].mentioned,true);assert.equal(list.tickets[0].mentionedUserIds,undefined);
+ }finally{await f.close();}
+});
